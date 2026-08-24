@@ -4,5 +4,16 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "framework": "vite",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Vercel-Product-Disable",
+          "value": "1"
+        }
+      ]
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
