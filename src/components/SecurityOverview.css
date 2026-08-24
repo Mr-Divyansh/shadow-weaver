@@ -1,0 +1,74 @@
+.security-overview {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--space-3);
+}
+
+.metric-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  transition: border-color 200ms ease-out;
+}
+
+.metric-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric-value {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric-critical {
+  border-color: var(--status-critical);
+}
+
+.metric-critical .metric-value {
+  color: var(--status-critical);
+}
+
+.metric-success {
+  border-color: var(--status-success);
+}
+
+.metric-success .metric-value {
+  color: var(--status-success);
+}
+
+.metric-accent {
+  border-color: var(--accent-primary);
+}
+
+.metric-accent .metric-value {
+  color: var(--accent-primary);
+}
+
+@media (max-width: 1199px) {
+  .security-overview {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .security-overview {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

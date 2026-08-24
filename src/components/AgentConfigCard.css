@@ -1,0 +1,145 @@
+.agent-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.agent-card-red {
+  border-top: 2px solid var(--status-critical);
+}
+
+.agent-card-blue {
+  border-top: 2px solid var(--accent-primary);
+}
+
+.agent-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-raised);
+}
+
+.agent-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.agent-status-badge.status-connected {
+  color: var(--status-success);
+}
+.agent-status-badge.status-error {
+  color: var(--status-critical);
+}
+.agent-status-badge.status-connecting {
+  color: var(--status-warning);
+}
+
+.agent-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-group label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.field-group input,
+.field-group select {
+  height: 34px;
+  padding: 0 var(--space-3);
+  background: var(--bg-app);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.field-group input::placeholder {
+  color: var(--text-muted);
+}
+
+.field-group input:focus-visible,
+.field-group select:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.api-key-input {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.api-key-input input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.key-toggle {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-app);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.key-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.agent-error-text {
+  font-size: 12px;
+  color: var(--status-critical);
+  background: var(--sev-critical-bg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.agent-connect-btn {
+  width: 100%;
+  margin-top: var(--space-1);
+}

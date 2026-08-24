@@ -1,0 +1,51 @@
+.agent-status-bar {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.agent-status-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: border-color 150ms ease-out, background 150ms ease-out;
+}
+
+.agent-status-chip:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.agent-status-chip-red {
+  border-left: 3px solid var(--status-critical);
+}
+
+.agent-status-chip-blue {
+  border-left: 3px solid var(--accent-primary);
+}
+
+.agent-status-chip .label-mono {
+  color: var(--text-secondary);
+}
+
+.agent-status-chip-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+@media (max-width: 767px) {
+  .agent-status-bar {
+    gap: var(--space-2);
+  }
+  .agent-status-chip {
+    padding: var(--space-2) var(--space-3);
+  }
+}

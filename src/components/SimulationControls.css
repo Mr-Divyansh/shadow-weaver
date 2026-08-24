@@ -1,0 +1,88 @@
+.sim-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.sim-stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.sim-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  transition: color 120ms ease-out, border-color 120ms ease-out, background 120ms ease-out;
+}
+
+.sim-step-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+}
+
+.sim-step.active {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.sim-step.active .sim-step-dot {
+  background: var(--accent-primary);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.sim-step.done {
+  color: var(--status-success);
+  border-color: rgba(47, 184, 123, 0.4);
+}
+
+.sim-step.done .sim-step-dot {
+  background: var(--status-success);
+}
+
+.sim-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.kill-btn {
+  border-color: var(--status-critical);
+  color: var(--status-critical);
+}
+
+.kill-btn.btn-danger {
+  background: var(--status-critical);
+  color: #fff;
+  border-color: var(--status-critical);
+}
+
+.kill-btn:not(.btn-danger):not(:disabled):hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.sim-stopped {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--status-warning);
+  border-radius: var(--radius-md);
+  background: var(--sev-warning-bg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

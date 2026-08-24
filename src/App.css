@@ -1,0 +1,63 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.dashboard-section {
+  width: 100%;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) 1fr;
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+.left-col {
+  grid-column: 1;
+}
+
+.feed-panel {
+  display: flex;
+  flex-direction: column;
+  height: 420px;
+}
+
+.feed-panel .panel-body,
+.feed-panel > *:last-child {
+  flex: 1;
+  min-height: 0;
+}
+
+.honeypot-panel-section {
+  width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .left-col {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 767px) {
+  .dashboard {
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+}

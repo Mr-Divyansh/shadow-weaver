@@ -1,0 +1,118 @@
+.topology-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.topology {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+}
+
+.topo-node {
+  fill: var(--bg-surface);
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+  transition: stroke 200ms ease-out, fill 200ms ease-out;
+}
+
+.topo-node-title {
+  fill: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  pointer-events: none;
+}
+
+.topo-node-sub {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.topo-red .topo-node-title,
+.topo-blue .topo-node-title,
+.topo-honeypot .topo-node-title {
+  fill: var(--text-primary);
+}
+
+.topo-red.topo-active,
+.topo-blue.topo-active {
+  stroke: var(--status-critical);
+  fill: var(--sev-critical-bg);
+}
+
+.topo-honeypot.topo-captured {
+  stroke: var(--accent-honeypot);
+  fill: rgba(167, 139, 250, 0.12);
+}
+
+.topo-honeypot.topo-active {
+  stroke: var(--accent-honeypot);
+}
+
+.topology-legend {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+.red-dot { background: var(--status-critical); }
+.blue-dot { background: var(--status-info); }
+.honey-dot { background: var(--accent-honeypot); }
+
+/* Edges */
+.topo-edge-wrap {
+  color: var(--border-strong);
+}
+
+.topo-edge {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  transition: stroke 200ms ease-out;
+}
+
+.topo-edge-wrap.attack {
+  color: var(--status-critical);
+}
+
+.topo-edge-wrap.attack .topo-edge {
+  stroke: var(--status-critical);
+  stroke-width: 2.5;
+  stroke-dasharray: 8 4;
+  animation: edge-flow 1.5s linear infinite;
+}
+
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topo-edge-wrap.attack .topo-edge {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}
