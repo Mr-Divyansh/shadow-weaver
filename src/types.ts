@@ -172,51 +172,45 @@ export interface DataProvider {
   setMode(mode: OperatingMode): void;
 }
 
-// ── AI Agent configuration (frontend-only; see services/agentConnectionService.ts) ──
-// NOTE: Red Team and Blue Team configuration are intentionally modeled as two
-// independent records (see AppState.agents in store.ts) so that editing one
-// can never mutate the other.
+// ── Target configuration ──────────────────────────────────────────────────────────────
 
+export type TargetMode = "demo" | "authorized_lab";
+
+export type TargetEnvironment = "demo" | "local_lab" | "private_network" | "cloud_lab" | "ctf_lab";
+
+export interface TargetAuthorizedConfig {
+  host: string;
+  port: number;
+  serverName?: string;
+  environment: TargetEnvironment;
+  authorized: boolean;
+}
+
+export interface TargetDemoConfig {
+  targetName: string;
+  targetIP: string;
+  port: number;
+  environment: TargetEnvironment;
+}
+
+export interface TargetConfig {
+  mode: TargetMode;
+  authorized: TargetAuthorizedConfig | null;
+  demo: TargetDemoConfig | null;
+}
+
+export interface TargetStatus {
+  status: "disconnected" | "connecting" | "connected" | "demo_connected" | "failed";
+  mode: TargetMode;
+  target?: {
+    host: string;
+    port: number;
+    name: string;
+    environment: TargetEnvironment;
+  };
+  lastChecked?: string;
+  error?: string;
+}
+
+// ── Backward compatibility: keep AgentTeam for any remaining references ──────
 export type AgentTeam = "red" | "blue";
-
-export type AgentProviderId = "claude" | "glm" | "openai" | "custom";
-
-export const AGENT_PROVIDER_LABELS: Record<AgentProviderId, string> = {
-  claude: "Claude",
-  glm: "GLM",
-  openai: "OpenAI",
-  custom: "Custom",
-};
-
-export type AgentConnectionStatus = "not_connected" | "connecting" | "connected" | "error";
-
-export const AGENT_STATUS_LABELS: Record<AgentConnectionStatus, string> = {
-  not_connected: "Not Connected",
-  connecting: "Connecting...",
-  connected: "Connected",
-  error: "Connection Failed",
-};
-
-export interface AgentConfig {
-  provider: AgentProviderId;
-  /** Only used when provider === "custom" */
-  customProviderName: string;
-  endpoint: string;
-  apiKey: string;
-  model: string;
-}
-
-export interface AgentConnectionState {
-  config: AgentConfig;
-  status: AgentConnectionStatus;
-  error: string | null;
-  connectedAt: string | null;
-}
-
-export function createEmptyAgentConfig(): AgentConfig {
-  return { provider: "claude", customProviderName: "", endpoint: "", apiKey: "", model: "" };
-}
-
-export function createInitialAgentState(): AgentConnectionState {
-  return { config: createEmptyAgentConfig(), status: "not_connected", error: null, connectedAt: null };
-}

@@ -202,3 +202,182 @@
   white-space: nowrap;
   min-width: 0;
 }
+
+/* ── Target Configuration Form ───────────────────────────────────────────── */
+
+.settings-form-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  margin-bottom: var(--space-3);
+}
+
+.settings-form-tab {
+  padding: var(--space-2) var(--space-3);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 120ms ease-out, background 120ms ease-out;
+}
+
+.settings-form-tab:hover {
+  color: var(--text-primary);
+}
+
+.settings-form-tab.active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+/* Demo Mode Panel */
+.settings-form-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.form-group {
+  margin-bottom: var(--space-3);
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: border-color 120ms ease-out;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.form-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+  display: block;
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  justify-content: flex-end;
+}
+
+.form-actions .btn {
+  padding: var(--space-2) var(--space-3);
+}
+
+/* Authorized Lab Specific */
+.form-group.authorization {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.form-group.authorization input {
+  width: auto;
+  margin: 0;
+}
+
+/* ── Connection Status Card ───────────────────────────────────────────── */
+
+.connection-status-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-3);
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-2);
+}
+
+.status-row:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-success { background: var(--accent-success); }
+.dot-warning { background: var(--accent-warning); }
+.dot-critical { background: var(--accent-critical); }
+.dot-offline { background: var(--accent-offline); }
+.dot-purple { background: var(--accent-primary); }
+
+.status-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.status-value {
+  font-size: 12px;
+  color: var(--text-primary);
+  min-width: 80px;
+  text-align: right;
+}
+
+/* Demo badge */
+.demo-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent-primary);
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  margin-right: 4px;
+}

@@ -1,20 +1,18 @@
 import { useEffect } from "react";
 import { useAppState, store } from "../store";
-import { provider } from "../simulation";
-import { AGENT_PROVIDER_LABELS, AGENT_STATUS_LABELS } from "../types";
-import { AgentConfigCard } from "./AgentConfigCard";
-
+import { TargetMode, TargetEnvironment, TargetConfig, TargetStatus, TargetAuthorizedConfig, TargetDemoConfig } from "../types";
 import "./SettingsPanel.css";
 
-const TABS: { id: "general" | "agents" | "status"; label: string }[] = [
+const TABS: { id: "general" | "protected_target" | "status"; label: string }[] = [
   { id: "general", label: "General" },
-  { id: "agents", label: "AI Agent Configuration" },
+  { id: "protected_target", label: "Protected Target" },
   { id: "status", label: "Connection Status" },
 ];
 
 export function SettingsPanel() {
   const state = useAppState();
   const { open, tab } = state.settings;
+  const { config, status } = state.target;
 
   useEffect(() => {
     if (!open) return;
@@ -108,51 +106,51 @@ export function SettingsPanel() {
             </div>
           )}
 
-          {tab === "agents" && (
+          {tab === "protected_target" && (
             <div className="settings-section">
-              <p className="settings-hint">
-                Red Team and Blue Team each connect to their own AI provider independently. Configuring one never
-                changes the other. Connections below are a frontend prototype — no request is sent to any provider
-                until a backend endpoint is wired up.
-              </p>
-              <div className="agent-card-grid">
-                <AgentConfigCard team="red" state={state.agents.red} />
-                <AgentConfigCard team="blue" state={state.agents.blue} />
+              <div className="settings-section-header">
+                <div className="settings-section-title">Protected Target</div>
+                <div className="settings-section-subtitle">
+                  Connect Shadow-Weaver to an authorized server or isolated security lab and monitor its security lifecycle.
+                </div>
               </div>
+
+              <TargetConfigForm
+                mode={config.mode}
+                authorized={config.authorized}
+                demoConfig={config.demo}
+                authorizedConfig={config.authorized}
+                onModeChange={newMode => store.setTargetConfig({ ...config, mode: newMode })}
+                onConnect={store.connectTarget}
+                onDisconnect={store.disconnectTarget}
+              />
+
+              {status.mode === "demo" && (
+                <div className="settings-demo-hint">
+                  <span className="demo-badge">🟢 DEMO MODE</span>
+                  <span>Simulated target environment — no real server required.</span>
+                </div>
+              )}
+
+              {status.mode === "authorized_lab" && !status.authorized && (
+                <div className="settings-authorization-required">
+                  <span>⚠ Authorization required to connect to lab server.</span>
+                </div>
+              )}
             </div>
           )}
 
           {tab === "status" && (
             <div className="settings-section">
-              {(["red", "blue"] as const).map((team) => {
-                const agent = state.agents[team];
-                const providerLabel =
-                  agent.config.provider === "custom"
-                    ? agent.config.customProviderName || "Custom"
-                    : AGENT_PROVIDER_LABELS[agent.config.provider];
-                return (
-                  <div className="status-summary-card" key={team}>
-                    <div className="status-summary-header">
-                      <span className="status-summary-title">
-                        {team === "red" ? "🔴 Red Team" : "🔵 Blue Team"}
-                      </span>
-                      <span className={`badge sev-${agent.status === "connected" ? "success" : agent.status === "error" ? "critical" : agent.status === "connecting" ? "warning" : "info"}`}>
-                        {AGENT_STATUS_LABELS[agent.status]}
-                      </span>
-                    </div>
-                    <dl className="status-summary-grid">
-                      <dt>Provider</dt>
-                      <dd>{agent.config.provider ? providerLabel : "—"}</dd>
-                      <dt>Model</dt>
-                      <dd>{agent.config.model || "—"}</dd>
-                      <dt>Endpoint</dt>
-                      <dd className="truncate">{agent.config.endpoint || "—"}</dd>
-                      <dt>Connected</dt>
-                      <dd>{agent.connectedAt ? new Date(agent.connectedAt).toLocaleString() : "—"}</dd>
-                    </dl>
-                  </div>
-                );
-              })}
+              <ConnectionStatusCard
+                orchestratorState={state.connection}
+                wsConnected={true}
+                targetStatus={status}
+                redTeamReady={state.agents.red.status === "connected"}
+                blueTeamReady={state.agents.blue.status === "connected"}
+                honeypotActive={state.honeypot.status === "active" || state.honeypot.status === "captured"}
+                aiReady={true}
+              />
             </div>
           )}
         </div>

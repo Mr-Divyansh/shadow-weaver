@@ -1,8 +1,5 @@
 import { useSyncExternalStore } from "react";
 import type {
-  AgentConfig,
-  AgentConnectionState,
-  AgentConnectionStatus,
   AgentTeam,
   ApprovalRequest,
   ConnectionState,
@@ -13,6 +10,12 @@ import type {
   OverviewMetrics,
   ShadowEvent,
   SimulationPhase,
+  TargetMode,
+  TargetEnvironment,
+  TargetAuthorizedConfig,
+  TargetDemoConfig,
+  TargetConfig,
+  TargetStatus,
   TrafficMetric,
 } from "./types";
 import { createInitialAgentState } from "./types";
@@ -59,7 +62,11 @@ export interface AppState {
   agents: Record<AgentTeam, AgentConnectionState>;
   settings: {
     open: boolean;
-    tab: "general" | "agents" | "status";
+    tab: "general" | "protected_target" | "status";
+  };
+  target: {
+    config: TargetConfig;
+    status: TargetStatus;
   };
 }
 
@@ -95,7 +102,23 @@ const initialState: AppState = {
     red: createInitialAgentState(),
     blue: createInitialAgentState(),
   },
-  settings: { open: false, tab: "agents" },
+  settings: { open: false, tab: "protected_target" },
+  target: {
+    config: {
+      mode: "demo",
+      authorized: null,
+      demo: {
+        targetName: "DEMO-TARGET",
+        targetIP: "192.0.2.10",
+        port: 8080,
+        environment: "demo",
+      },
+    },
+    status: {
+      status: "disconnected",
+      mode: "demo",
+    },
+  },
 };
 
 // ── Store implementation ────────────────────────────────────────────────────
@@ -179,36 +202,58 @@ class Store {
     this.setState({ approval: { pending } });
   }
 
-  setOverview(patch: Partial<OverviewMetrics>) {
+setOverview(patch: Partial<OverviewMetrics>) {
     this.setState({ overview: { ...this.state.overview, ...patch } });
   }
 
-  // ── AI Agent configuration (Red/Blue are independent by construction:
-  // each write targets only `agents[team]`, spreading the rest untouched) ──
+  // ── Target management ──────────────────────────────────────────────────
 
-  setAgentConfig(team: AgentTeam, patch: Partial<AgentConfig>) {
-    const current = this.state.agents[team];
-    this.setState({
-      agents: {
-        ...this.state.agents,
-        [team]: { ...current, config: { ...current.config, ...patch } },
-      },
-    });
+  setTargetConfig(config: TargetConfig) {
+    this.setState({ target: { ...this.state.target, config } });
   }
 
-  setAgentStatus(team: AgentTeam, status: AgentConnectionStatus, error: string | null = null) {
-    const current = this.state.agents[team];
-    this.setState({
-      agents: {
-        ...this.state.agents,
-        [team]: {
-          ...current,
-          status,
-          error,
-          connectedAt: status === "connected" ? new Date().toISOString() : current.connectedAt,
-        },
+  connectTarget() {
+    const { config, status } = this.state.target;
+    // Update status to connecting
+    this.setTargetStatus({ ...status, status: "connecting" });
+
+    // In a full implementation, this would call the backend API.
+    // For now, handle demo mode client-side.
+    if (config.mode === "demo") {
+      this.enableTargetDemo();
+    } else if (config.mode === "authorized_lab" && config.authorized) {
+      this.authorizeTargetLab();
+    } else {
+      this.setTargetStatus({
+        ...status,
+        status: "failed",
+        error: "Target not authorized or configuration invalid",
+      });
+    }
+  }
+
+  disconnectTarget() {
+    // Reset to demo mode config
+    this.setTargetConfig({
+      mode: "demo",
+      authorized: null,
+      demo: {
+        targetName: "DEMO-TARGET",
+        targetIP: "192.0.2.10",
+        port: 8080,
+        environment: "demo",
       },
     });
+    this.setTargetStatus({
+      status: "disconnected",
+      mode: "demo",
+    });
+    // Stop any demo simulation
+    this.stopDemoSimulation();
+  }
+
+  setTargetStatus(patch: Partial<TargetStatus>) {
+    this.setState({ target: { ...this.state.target, status: { ...this.state.target.status, ...patch } } });
   }
 
   // ── Demo Mode: instantly mark both agents "connected" client-side,
@@ -219,6 +264,9 @@ class Store {
   }
 
   disableDemoMode() {
+    if (this.state.target.status.status === "demo_connected") {
+      this.setTargetStatus({ status: "disconnected", mode: "demo" });
+    }
     (["red", "blue"] as const).forEach((team) => this.setAgentStatus(team, "not_connected"));
     this.stopDemoSimulation();
   }
@@ -255,7 +303,7 @@ class Store {
     }
   }
 
-  openSettings(tab: AppState["settings"]["tab"] = "agents") {
+  openSettings(tab: AppState["settings"]["tab"] = "protected_target") {
     this.setState({ settings: { open: true, tab } });
   }
 

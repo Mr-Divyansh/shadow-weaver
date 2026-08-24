@@ -1,2 +1,2 @@
 [tool.vercel]
-entrypoint = "orchestrator:app"
+entrypoint = "backend.orchestrator:app"
