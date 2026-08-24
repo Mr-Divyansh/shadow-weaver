@@ -104,7 +104,21 @@ const callbacks: DataProviderCallbacks = {
   },
 };
 
-provider.connect(callbacks);
+// Connect to backend provider WITHOUT crashing the app.
+// If connection fails, the dashboard still mounts and shows an offline state.
+try {
+  provider.connect(callbacks);
+} catch (error) {
+  // Log error for debugging but don't prevent React from mounting
+  // Store offline state so UI shows "Backend Offline" instead of black screen
+  store.setConnection("disconnected");
+  store.setSystemOnline(false);
+  store.setOverview({ systemHealth: "Offline" });
+  // Re-throw in development to help debugging
+  if (import.meta.env.DEV) {
+    throw error;
+  }
+}
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
