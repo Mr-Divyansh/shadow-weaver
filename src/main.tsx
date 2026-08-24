@@ -4,7 +4,11 @@ import App from "./App";
 import { provider } from "./simulation";
 import { store } from "./store";
 import type { DataProviderCallbacks } from "./types";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./styles/global.css";
+
+// ── DEBUG: Production boot diagnostics ─────────────────────────────────────
+console.log("[Shadow-Weaver] main.tsx loaded");
 
 // ── Event normalizer: backend events → frontend store transitions ───────────
 // Per docs/API.md — the frontend only consumes normalized events.
@@ -122,6 +126,13 @@ try {
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary fallback={<div style={{ padding: "20px", textAlign: "center", color: "#e6eaf2" }}>
+      <h3>Shadow-Weaver</h3>
+      <p>Initializing...</p>
+    </div>}>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );
+// ── DEBUG ────────────────────────────────────────────────────────────────
+console.log("[Shadow-Weaver] React mounted");
