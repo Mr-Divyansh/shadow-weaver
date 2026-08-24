@@ -256,6 +256,31 @@ setOverview(patch: Partial<OverviewMetrics>) {
     this.setState({ target: { ...this.state.target, status: { ...this.state.target.status, ...patch } } });
   }
 
+  setAgentStatus(team: AgentTeam, status: AgentConnectionStatus, error: string | null = null) {
+    const current = this.state.agents[team];
+    this.setState({
+      agents: {
+        ...this.state.agents,
+        [team]: {
+          ...current,
+          status,
+          error,
+          connectedAt: status === "connected" ? new Date().toISOString() : current.connectedAt,
+        },
+      },
+    });
+  }
+
+  // ── Demo Target Mode ──────────────────────────────────────────────────
+  enableTargetDemo() {
+    this.setTargetStatus({ status: "demo_connected", mode: "demo" });
+    this.startDemoSimulation();
+  }
+
+  authorizeTargetLab() {
+    this.setTargetStatus({ status: "connected", mode: "authorized_lab" });
+  }
+
   // ── Demo Mode: instantly mark both agents "connected" client-side,
   // no API keys / network calls needed. Purely for presentations. ──────────
   enableDemoMode() {

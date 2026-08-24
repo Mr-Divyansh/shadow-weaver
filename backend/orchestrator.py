@@ -493,9 +493,10 @@ async def soc_feed(ws: WebSocket):
     WS_CONNECTIONS.set(len(clients))
     try:
         while True:
-            await ws.receive_text()
-    except WebSocketDisconnect:
-        pass
+            try:
+                await asyncio.wait_for(ws.receive_text(), timeout=1.0)
+            except (asyncio.TimeoutError, WebSocketDisconnect):
+                pass
     finally:
         if ws in clients:
             clients.remove(ws)
@@ -556,8 +557,9 @@ async def metrics_updater():
         await asyncio.sleep(10)
 
 # ── Startup / Shutdown ──────────────────────────────────────────────
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize DB pool and background tasks
     await init_db_pool()
     # Initialize alert queue
     alerts.alert_queue = asyncio.Queue()
@@ -566,13 +568,14 @@ async def startup():
     asyncio.create_task(event_pruner())
     asyncio.create_task(metrics_updater())
     logger.info(f"Orchestrator started port={config.ORCH_PORT}")
-
-@app.on_event("shutdown")
-async def shutdown():
+    yield
+    # Shutdown
     shutdown_event.set()
     await asyncio.sleep(0.5)
     await close_db_pool()
     logger.info("Orchestrator shutdown complete")
+
+app = FastAPI(title="Shadow-Weaver Orchestrator", lifespan=lifespan)
 
 if __name__ == "__main__":
     import uvicorn
