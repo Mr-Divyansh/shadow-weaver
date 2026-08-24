@@ -214,3 +214,11 @@ export interface TargetStatus {
 
 // ── Backward compatibility: keep AgentTeam for any remaining references ──────
 export type AgentTeam = "red" | "blue";
+
+export function createEmptyAgentConfig(): AgentConfig {
+  return { provider: "claude", customProviderName: "", endpoint: "", apiKey: "", model: "" };
+}
+
+export function createInitialAgentState(): AgentConnectionState {
+  return { config: createEmptyAgentConfig(), status: "not_connected", error: null, connectedAt: null };
+}
