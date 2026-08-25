@@ -37,9 +37,7 @@ cd shadow-weaver
 pip install -r requirements.txt
 
 # Install frontend dependencies
-cd frontend
 npm install
-cd ..
 ```
 
 ### Running
