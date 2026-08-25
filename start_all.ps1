@@ -1,9 +1,13 @@
 $ErrorActionPreference = "SilentlyContinue"
-$ROOT = "D:\shadow-weaver"
+# Use the directory where this script lives as the project root
+$SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$ROOT = Resolve-Path -Path $SCRIPT_DIR
 $BACKEND = "$ROOT\backend"
-$FRONTEND = "$ROOT\frontend"
+$FRONTEND_SRC = "$ROOT\src"
 $LOGS = "$ROOT\logs"
-New-Item -ItemType Directory -Force -Path "$ROOT\data", $LOGS | Out-Null
+$data_dir = "$ROOT\data"
+if (-not (Test-Path $data_dir)) { New-Item -ItemType Directory -Force -Path $data_dir | Out-Null }
+if (-not (Test-Path "$LOGS")) { New-Item -ItemType Directory -Force -Path "$LOGS" | Out-NULL }
 
 # Load .env into environment
 $envFile = "$BACKEND\.env"
@@ -35,10 +39,16 @@ Start-Process python -ArgumentList "$BACKEND\ssh_monitor.py" -WorkingDirectory $
 Write-Host "Backend services started"
 
 # Start frontend
-if (Test-Path "$FRONTEND\package.json") {
-    $env:PATH = "D:\nodejs\node-v20.18.0-win-x64;$env:PATH"
-    Start-Process -FilePath "D:\nodejs\node-v20.18.0-win-x64\npm.cmd" -ArgumentList "run dev" -WorkingDirectory $FRONTEND -WindowStyle Hidden
-    Write-Host "Frontend started on port 3000"
+if (Test-Path "$ROOT\package.json") {
+    $node_path = "$env:LOCALAPPDATA\Programs\nodejs"
+    if (-not (Test-Path $node_path)) { $node_path = "D:\nodejs\node-v20.18.0-win-x64" }
+    if (Test-Path "$node_path\npm.cmd") {
+        $env:PATH = "$node_path;$env:PATH"
+        Start-Process -FilePath "$node_path\npm.cmd" -ArgumentList "run dev" -WorkingDirectory $ROOT -WindowStyle Hidden
+        Write-Host "Frontend started on port 3000"
+    } else {
+        Write-Host "Node.js not found — start frontend manually with: cd $ROOT && npm run dev"
+    }
 }
 
 Start-Sleep 5
