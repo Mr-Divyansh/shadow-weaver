@@ -10,6 +10,10 @@ function statusDot(status: string) {
       return <span className="dot dot-info" aria-hidden="true" />;
     case "captured":
       return <span className="dot dot-critical dot-live" aria-hidden="true" />;
+    case "initializing":
+      return <span className="dot dot-warning dot-pulse" aria-hidden="true" />;
+    case "armed":
+      return <span className="dot dot-success dot-pulse" aria-hidden="true" />;
     default:
       return <span className="dot dot-offline" aria-hidden="true" />;
   }
@@ -27,10 +31,14 @@ export function HoneypotPanel() {
         ? "WAITING"
         : h.status === "captured"
           ? "CAPTURED"
-          : "OFFLINE";
+          : h.status === "initializing"
+            ? "INITIALIZING"
+            : h.status === "armed"
+              ? "ARMED"
+              : "OFFLINE";
 
   return (
-    <div className="honeypot-panel">
+    <div className="honeypot-panel" data-status={h.status}>
       {/* Status row */}
       <div className="honeypot-status-row">
         {statusDot(h.status)}

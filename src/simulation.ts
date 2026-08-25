@@ -121,9 +121,8 @@ class MockProvider implements DataProvider {
         });
       }
 
-      this.emit(event("honeypot_active", "info", { message: "Honeypot deception environment active", target: HONEYPOT_IP }));
-      this.emit(event("honeypot_waiting", "info", { message: "Honeypot is waiting for a session" }));
-      this.emit(event("system_online", "info", { message: "All three environments reporting healthy" }));
+      // Initialize honeypot first, then system online
+      this.initializeHoneypotSequence();
 
       // Live traffic
       this.trafficInterval = setInterval(() => {
@@ -152,6 +151,25 @@ class MockProvider implements DataProvider {
     this.timeout(() => {
       // Intentionally unreachable in normal flow; hook for debugging
     }, 100000);
+  }
+
+  private initializeHoneypotSequence() {
+    // Step 1: Honeypot initialization
+    store.setHoneypotStatus("initializing");
+    this.emit(event("honeypot_active", "info", { message: "Honeypot deception environment initializing", target: HONEYPOT_IP }));
+
+    // Step 2: After delay, honeypot becomes armed
+    this.simTimeout(() => {
+      store.setHoneypotStatus("armed");
+      this.emit(event("honeypot_waiting", "info", { message: "Honeypot armed and ready for sessions", target: HONEYPOT_IP }));
+    }, 300);
+
+    // Step 3: After delay, honeypot becomes active
+    this.simTimeout(() => {
+      store.setHoneypotStatus("active");
+      this.emit(event("honeypot_active", "info", { message: "Honeypot deception environment active", target: HONEYPOT_IP }));
+      this.emit(event("system_online", "info", { message: "All three environments reporting healthy" }));
+    }, 800);
   }
 
   disconnect() {
@@ -184,32 +202,34 @@ class MockProvider implements DataProvider {
     const mode = store.getState().mode;
     this.emit(event("simulation_started", "info", { message: "Controlled attack simulation started (simulated demo data)" }));
 
-    // Phase 1 — Reconnaissance
-    this.setPhase("reconnaissance");
-    this.emit(event("reconnaissance_started", "info", { source: RED_IP, target: BLUE_IP, message: "Reconnaissance started" }));
-    this.emit(event("service_discovered", "info", { source: RED_IP, target: BLUE_IP, message: "Open ports identified on target" }));
+    // Phase 1 — Attack
+    this.setPhase("attack");
+    this.emit(event("attack_started", "high", { source: RED_IP, target: BLUE_IP, message: "Red Team attack initiated" }));
+    this.emit(event("service_discovered", "info", { source: RED_IP, target: BLUE_IP, message: "Target services identified" }));
+    store.setTopology({ attackActive: true, attackTarget: "blue_team" });
+    store.setOverview({ activeThreats: 1 });
 
     this.simTimeout(() => {
-      this.emit(event("suspicious_activity", "warning", { source: RED_IP, target: BLUE_IP, message: "Port scanning detected on Blue Team environment" }));
+      this.emit(event("suspicious_activity", "warning", { source: RED_IP, target: BLUE_IP, message: "Malicious activity detected on Blue Team environment" }));
     }, 1200);
 
-    // Phase 2 — Attack active
-    this.simTimeout(() => {
-      this.setPhase("active");
-      this.emit(event("attack_started", "high", { source: RED_IP, target: BLUE_IP, message: "Credential brute-force attack in progress" }));
-      store.setTopology({ attackActive: true, attackTarget: "blue_team", reconActive: false });
-      store.setOverview({ activeThreats: 1 });
-    }, 2400);
-
-    // Phase 3 — Detection
+    // Phase 2 — Detection
     this.simTimeout(() => {
       this.setPhase("detection");
-      this.emit(event("threat_detected", "high", { source: RED_IP, target: BLUE_IP, message: "Suspicious authentication activity confirmed" }));
+      this.emit(event("threat_detected", "high", { source: RED_IP, target: BLUE_IP, message: "Blue Team detected suspicious activity" }));
       store.setOverview({ threatsDetected: store.getState().overview.threatsDetected + 1 });
-    }, 4000);
+    }, 2400);
 
-    // Phase 4 — Honeypot capture
+    // Phase 3 — Honeypot
     this.simTimeout(() => {
+      this.setPhase("honeypot");
+      this.emit(event("honeypot_active", "info", { message: "Honeypot deception environment activated", target: HONEYPOT_IP }));
+      this.emit(event("honeypot_waiting", "info", { message: "Honeypot waiting for attacker connection" }));
+    }, 3600);
+
+    // Phase 4 — Capture
+    this.simTimeout(() => {
+      this.setPhase("capture");
       this.emit(event("honeypot_session_captured", "critical", {
         source: RED_IP,
         target: HONEYPOT_IP,
@@ -228,14 +248,14 @@ class MockProvider implements DataProvider {
         honeypotStatus: "Active",
       });
       store.setOverview({ honeypotCaptures: store.getState().overview.honeypotCaptures + 1 });
-    }, 5400);
+    }, 4800);
 
     // Honeypot command stream
     CAPTURED_COMMANDS.forEach((cmd, i) => {
       this.simTimeout(() => {
         this.emit(event("honeypot_command", "info", { command: cmd, sessionId: "CAPTURED", message: "Attacker command captured" }));
         store.appendHoneypotCommand(cmd);
-      }, 6200 + i * 900);
+      }, 5600 + i * 900);
     });
 
     // Phase 5 — Containment (depends on mode)
@@ -291,7 +311,7 @@ class MockProvider implements DataProvider {
     // Cancel every pending phase/honeypot timer from the run being killed —
     // otherwise stale callbacks fire later and corrupt whatever runs next.
     this.clearSimTimers();
-    store.setTopology({ attackActive: false, attackTarget: null, reconActive: false });
+    store.setTopology({ attackActive: false, attackTarget: null });
     store.setSimulation({ phase: "ready", running: false, stopped: true });
     store.setApproval(null);
     store.setOverview({ activeThreats: 0 });
@@ -306,18 +326,16 @@ class MockProvider implements DataProvider {
       const phase = store.getState().simulation.phase;
       const random = Math.random();
 
-      // Phase progression: ready → reconnaissance → active → detection → containment → completed
+      // Phase progression: ready → attack → detection → honeypot → capture → containment → completed
       if (phase === "ready" && random < 0.1) {
-        store.setSimulation({ phase: "reconnaissance" as any });
-      } else if (phase === "reconnaissance" && random < 0.15) {
-        store.setSimulation({ phase: "active" as any });
-        store.setTopology({ attackActive: true, attackTarget: "blue_team", reconActive: true });
-        this.emit(event("reconnaissance_started", "info", {
+        store.setSimulation({ phase: "attack" as any });
+        store.setTopology({ attackActive: true, attackTarget: "blue_team" });
+        this.emit(event("attack_started", "high", {
           source: "DEMO-TARGET",
           target: "192.0.2.10:8080",
-          message: "Demo target reconnaissance started",
+          message: "Demo target attack started",
         }));
-      } else if (phase === "active" && random < 0.15) {
+      } else if (phase === "attack" && random < 0.15) {
         store.setSimulation({ phase: "detection" as any });
         this.emit(event("threat_detected", "high", {
           source: "192.168.50.40",
@@ -326,6 +344,31 @@ class MockProvider implements DataProvider {
         }));
         store.setOverview({ threatsDetected: o.threatsDetected + 1 });
       } else if (phase === "detection" && random < 0.15) {
+        store.setSimulation({ phase: "honeypot" as any });
+        this.emit(event("honeypot_active", "info", {
+          source: "orchestrator",
+          target: "192.0.2.10:8080",
+          message: "Honeypot activated for demo target",
+        }));
+      } else if (phase === "honeypot" && random < 0.15) {
+        store.setSimulation({ phase: "capture" as any });
+        this.emit(event("honeypot_session_captured", "critical", {
+          source: "192.168.50.40",
+          target: "192.0.2.10:8080",
+          sessionId: `SES-${Math.floor(1000 + Math.random() * 9000)}`,
+          attackType: "Simulated brute-force",
+          message: "Demo session captured by honeypot",
+        }));
+        store.setFingerprint({
+          sourceIp: "192.168.50.40",
+          sessionId: `SES-${Math.floor(1000 + Math.random() * 9000)}`,
+          detectionTime: now(),
+          attackType: "Simulated brute-force",
+          severity: "HIGH",
+          sessionStatus: "Captured",
+          honeypotStatus: "Active",
+        });
+      } else if (phase === "capture" && random < 0.15) {
         store.setSimulation({ phase: "containment" as any });
         this.emit(event("containment_recommended", "high", {
           source: "orchestrator",
@@ -345,27 +388,6 @@ class MockProvider implements DataProvider {
         }));
         this.emit(event("honeypot_waiting", "info", { message: "Honeypot re-armed and waiting" }));
         store.setHoneypotStatus("waiting");
-      }
-
-      // Emit honeypot events based on status
-      const honeyStatus = store.getState().honeypot.status;
-      if (honeyStatus === "captured") {
-        this.emit(event("honeypot_session_captured", "critical", {
-          source: "192.168.50.40",
-          target: "192.0.2.10:8080",
-          sessionId: `SES-${Math.floor(1000 + Math.random() * 9000)}`,
-          attackType: "Simulated brute-force",
-          message: "Demo session captured by honeypot",
-        }));
-        store.setFingerprint({
-          sourceIp: "192.168.50.40",
-          sessionId: `SES-${Math.floor(1000 + Math.random() * 9000)}`,
-          detectionTime: now(),
-          attackType: "Simulated brute-force",
-          severity: "HIGH",
-          sessionStatus: "Captured",
-          honeypotStatus: "Active",
-        });
       }
 
       this.demoSimInterval = setTimeout(tick, 3000 + Math.random() * 2000);

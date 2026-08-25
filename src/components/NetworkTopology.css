@@ -15,8 +15,24 @@
 .topo-node {
   fill: var(--bg-surface);
   stroke: var(--border-strong);
-  stroke-width: 1.5;
-  transition: stroke 200ms ease-out, fill 200ms ease-out;
+  stroke-width: 2;
+  transition: stroke 200ms ease-out, fill 200ms ease-out, filter 200ms ease-out;
+}
+
+/* Default node colors when idle - subtle gray */
+.topo-red .topo-node {
+  stroke: #6b7280;
+  fill: rgba(107, 114, 128, 0.05);
+}
+
+.topo-blue .topo-node {
+  stroke: #6b7280;
+  fill: rgba(107, 114, 128, 0.05);
+}
+
+.topo-honeypot .topo-node {
+  stroke: #6b7280;
+  fill: rgba(107, 114, 128, 0.05);
 }
 
 .topo-node-title {
@@ -40,21 +56,46 @@
 .topo-blue .topo-node-title,
 .topo-honeypot .topo-node-title {
   fill: var(--text-primary);
+  font-weight: 700;
 }
 
-.topo-red.topo-active,
+.topo-red.topo-active {
+  stroke: #ef4444;
+  fill: rgba(239, 68, 68, 0.15);
+}
+
 .topo-blue.topo-active {
-  stroke: var(--status-critical);
-  fill: var(--sev-critical-bg);
+  stroke: #3b82f6;
+  fill: rgba(59, 130, 246, 0.2);
+  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.6));
+  animation: blue-glow 2s ease-in-out infinite;
 }
 
 .topo-honeypot.topo-captured {
   stroke: var(--accent-honeypot);
-  fill: rgba(167, 139, 250, 0.12);
+  fill: rgba(167, 139, 250, 0.2);
+  filter: drop-shadow(0 0 12px rgba(167, 139, 250, 0.8));
+  animation: honey-glow 2s ease-in-out infinite;
 }
 
 .topo-honeypot.topo-active {
   stroke: var(--accent-honeypot);
+  fill: rgba(167, 139, 250, 0.15);
+  filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.5));
+  animation: honey-active-glow 3s ease-in-out infinite;
+}
+
+.topo-honeypot.topo-armed {
+  stroke: var(--accent-honeypot);
+  fill: rgba(167, 139, 250, 0.12);
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.4));
+  animation: honey-armed-pulse 2s ease-in-out infinite;
+}
+
+.topo-honeypot.topo-initializing {
+  stroke: #9ca3af;
+  fill: rgba(156, 163, 175, 0.08);
+  animation: honey-initializing 1.5s ease-in-out infinite;
 }
 
 .topology-legend {
@@ -84,21 +125,22 @@
 
 /* Edges */
 .topo-edge-wrap {
-  color: var(--border-strong);
+  color: var(--border-subtle);
+  opacity: 0.6;
+  transition: color 200ms ease-out, opacity 200ms ease-out;
 }
 
 .topo-edge {
   stroke: currentColor;
-  stroke-width: 1.5;
+  stroke-width: 2;
   transition: stroke 200ms ease-out;
 }
 
 .topo-edge-wrap.attack {
-  color: var(--status-critical);
+  opacity: 1;
 }
 
 .topo-edge-wrap.attack .topo-edge {
-  stroke: var(--status-critical);
   stroke-width: 2.5;
   stroke-dasharray: 8 4;
   animation: edge-flow 1.5s linear infinite;
@@ -114,5 +156,65 @@
   .topo-edge-wrap.attack .topo-edge {
     animation: none;
     stroke-dasharray: none;
+  }
+  .topo-blue.topo-active,
+  .topo-honeypot.topo-captured,
+  .topo-honeypot.topo-active,
+  .topo-honeypot.topo-armed,
+  .topo-honeypot.topo-initializing {
+    animation: none;
+    filter: none;
+  }
+}
+
+/* Glow animations */
+@keyframes blue-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.6));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(59, 130, 246, 0.9));
+  }
+}
+
+@keyframes honey-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 12px rgba(167, 139, 250, 0.8));
+  }
+  50% {
+    filter: drop-shadow(0 0 20px rgba(167, 139, 250, 1));
+  }
+}
+
+@keyframes honey-active-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.5));
+    box-shadow: 0 0 8px rgba(167, 139, 250, 0.3);
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(167, 139, 250, 0.7));
+    box-shadow: 0 0 16px rgba(167, 139, 250, 0.5);
+  }
+}
+
+@keyframes honey-armed-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.4));
+    opacity: 1;
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.6));
+    opacity: 0.8;
+  }
+}
+
+@keyframes honey-initializing {
+  0%, 100% {
+    opacity: 0.6;
+    filter: drop-shadow(0 0 4px rgba(156, 163, 175, 0.3));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(156, 163, 175, 0.5));
   }
 }

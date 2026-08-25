@@ -3,6 +3,23 @@
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4) var(--space-4);
+  transition: all 0.3s ease;
+}
+
+.honeypot-panel[data-status="active"] {
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.2);
+}
+
+.honeypot-panel[data-status="armed"] {
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  box-shadow: 0 0 16px rgba(167, 139, 250, 0.3);
+  animation: panel-armed-glow 2s ease-in-out infinite;
+}
+
+.honeypot-panel[data-status="initializing"] {
+  border: 1px solid rgba(156, 163, 175, 0.3);
+  animation: panel-initializing 1.5s ease-in-out infinite;
 }
 
 .honeypot-status-row {
@@ -156,4 +173,52 @@
   padding: var(--space-4);
   border: 1px dashed var(--border-subtle);
   border-radius: var(--radius-md);
+}
+
+/* Panel animations */
+@keyframes panel-armed-glow {
+  0%, 100% {
+    box-shadow: 0 0 16px rgba(167, 139, 250, 0.3);
+    border-color: rgba(167, 139, 250, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(167, 139, 250, 0.5);
+    border-color: rgba(167, 139, 250, 0.6);
+  }
+}
+
+@keyframes panel-initializing {
+  0%, 100% {
+    opacity: 0.8;
+    border-color: rgba(156, 163, 175, 0.3);
+  }
+  50% {
+    opacity: 1;
+    border-color: rgba(156, 163, 175, 0.5);
+  }
+}
+
+.dot-pulse {
+  animation: dot-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-pulse {
+    animation: none;
+  }
+  .honeypot-panel[data-status="armed"],
+  .honeypot-panel[data-status="initializing"] {
+    animation: none;
+  }
 }

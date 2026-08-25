@@ -76,7 +76,6 @@ export interface AppState {
   topology: {
     attackActive: boolean;
     attackTarget: EntityId | null;
-    reconActive: boolean;
   };
   honeypot: {
     status: HoneypotStatus;
@@ -125,7 +124,7 @@ const initialState: AppState = {
     blue_team: { entity: "blue_team", cpu: 18, memory: 41, status: "healthy" },
     honeypot: { entity: "honeypot", cpu: 8, memory: 22, status: "healthy" },
   },
-  topology: { attackActive: false, attackTarget: null, reconActive: false },
+  topology: { attackActive: false, attackTarget: null },
   honeypot: {
     status: "waiting",
     commands: [],
@@ -271,7 +270,7 @@ class Store {
     this.setState({ approval: { pending } });
   }
 
-setOverview(patch: Partial<OverviewMetrics>) {
+  setOverview(patch: Partial<OverviewMetrics>) {
     this.setState({ overview: { ...this.state.overview, ...patch } });
   }
 
@@ -389,7 +388,7 @@ setOverview(patch: Partial<OverviewMetrics>) {
   // ── Demo Target Mode ──────────────────────────────────────────────────
   enableTargetDemo() {
     this.setTargetStatus({ status: "demo_connected", mode: "demo" });
-    this.startDemoSimulation();
+    this.initializeDemoMode();
   }
 
   authorizeTargetLab() {
@@ -400,6 +399,24 @@ setOverview(patch: Partial<OverviewMetrics>) {
   // no API keys / network calls needed. Purely for presentations. ──────────
   enableDemoMode() {
     (["red", "blue"] as const).forEach((team) => this.setAgentStatus(team, "connected"));
+    this.initializeDemoMode();
+  }
+
+  // ── Demo Mode Initialization Sequence ───────────────────────────────────
+  async initializeDemoMode() {
+    // Step 1: Honeypot initialization
+    this.setHoneypotStatus("initializing");
+    
+    // Step 2: After delay, honeypot becomes armed
+    await new Promise(resolve => setTimeout(resolve, 300));
+    this.setHoneypotStatus("armed");
+    
+    // Step 3: After delay, honeypot becomes active (with glow)
+    await new Promise(resolve => setTimeout(resolve, 500));
+    this.setHoneypotStatus("active");
+    
+    // Step 4: After delay, start the actual demo simulation
+    await new Promise(resolve => setTimeout(resolve, 1500));
     this.startDemoSimulation();
   }
 
@@ -558,7 +575,7 @@ setOverview(patch: Partial<OverviewMetrics>) {
 
   resetSimulation() {
     this.setState({
-      topology: { attackActive: false, attackTarget: null, reconActive: false },
+      topology: { attackActive: false, attackTarget: null },
       honeypot: { status: "waiting", commands: [], fingerprint: null },
       simulation: { phase: "ready", running: false, stopped: false },
       approval: { pending: null },

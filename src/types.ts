@@ -66,12 +66,11 @@ export type EventType =
   | "simulation_phase_changed"
   | "simulation_completed"
   | "simulation_stopped"
-  // Attack / reconnaissance
-  | "reconnaissance_started"
-  | "service_discovered"
+  // Attack
   | "attack_started"
   | "attack_active"
   | "attack_ended"
+  | "service_discovered"
   // Detection & response
   | "threat_detected"
   | "suspicious_activity"
@@ -117,24 +116,26 @@ export interface TrafficMetric {
 
 export type SimulationPhase =
   | "ready"
-  | "reconnaissance"
-  | "active"
+  | "attack"
   | "detection"
+  | "honeypot"
+  | "capture"
   | "containment"
   | "completed";
 
 export const PHASE_STEPS: { id: SimulationPhase; label: string }[] = [
   { id: "ready", label: "Ready" },
-  { id: "reconnaissance", label: "Reconnaissance" },
-  { id: "active", label: "Simulation Active" },
+  { id: "attack", label: "Attack" },
   { id: "detection", label: "Detection" },
+  { id: "honeypot", label: "Honeypot" },
+  { id: "capture", label: "Capture" },
   { id: "containment", label: "Containment" },
   { id: "completed", label: "Completed" },
 ];
 
 // ── Honeypot ────────────────────────────────────────────────────────────────
 
-export type HoneypotStatus = "active" | "waiting" | "captured" | "offline";
+export type HoneypotStatus = "active" | "waiting" | "captured" | "offline" | "initializing" | "armed";
 
 // ── Approval request (manual mode) ──────────────────────────────────────────
 
