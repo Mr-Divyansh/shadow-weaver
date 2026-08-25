@@ -1,5 +1,7 @@
 import { useAppState } from "../store";
+import { deriveEntityStates } from "../entityState";
 import { ENTITY_LABELS } from "../types";
+import type { EntityId } from "../types";
 
 import "./NetworkTopology.css";
 
@@ -15,24 +17,37 @@ const RED = { x: 40, y: 20 };
 const BLUE = { x: 40 + NODE_W + GAP, y: 20 };
 const HONEY = { x: 40 + NODE_W + GAP, y: 20 + NODE_H + GAP };
 
-function nodeClasses(kind: string, active: boolean, captured: boolean, honeyStatus?: string) {
-  const base = `topo-node topo-${kind}`;
-  if (kind === "honeypot" && honeyStatus) {
-    if (honeyStatus === "captured") return `${base} topo-captured`;
-    if (honeyStatus === "active") return `${base} topo-active`;
-    if (honeyStatus === "armed") return `${base} topo-armed`;
-    if (honeyStatus === "initializing") return `${base} topo-initializing`;
-  }
-  if (active) return `${base} topo-active`;
-  if (captured) return `${base} topo-captured`;
-  return base; // Always return base class so nodes are visible with default colors
+// Tones that keep the small status indicator dot animated on the node.
+const LIVE_TONES = new Set<string>([
+  "arming",
+  "armed",
+  "attacking",
+  "underattack",
+  "defending",
+  "capturing",
+  "captured",
+]);
+
+// Visual class key per entity (matches the CSS namespace: red/blue/honeypot),
+// mapping from the EntityId keys used elsewhere in the store.
+const KIND_CSS: Record<EntityId, string> = {
+  red_team: "red",
+  blue_team: "blue",
+  honeypot: "honeypot",
+};
+
+function nodeClass(kind: EntityId, tone: string): string {
+  return `topo-node topo-${KIND_CSS[kind]} topo-st-${tone}`;
+}
+
+function dotClass(tone: string): string {
+  return `topo-node-dot topo-dot-${tone}${LIVE_TONES.has(tone) ? " topo-dot-live" : ""}`;
 }
 
 export function NetworkTopology() {
   const state = useAppState();
   const t = state.topology;
-  const honeypotStatus = state.honeypot.status;
-  const honeypotCaptured = honeypotStatus === "captured";
+  const cards = deriveEntityStates(state);
 
   const attackBlue = t.attackActive && t.attackTarget === "blue_team";
   const attackHoneypot = t.attackActive && t.attackTarget === "honeypot";
@@ -41,7 +56,11 @@ export function NetworkTopology() {
   const svgH = 40 + NODE_H * 2 + GAP + 20;
 
   return (
-    <div className="topology-wrap" role="img" aria-label="Network topology showing Red Team attacking Blue Team and Honeypot">
+    <div
+      className="topology-wrap"
+      role="img"
+      aria-label="Cyber defense topology showing Red Team, Blue Team and Honeypot"
+    >
       <svg className="topology" viewBox={`0 0 ${svgW} ${svgH}`} role="presentation">
         <defs>
           <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -66,8 +85,8 @@ export function NetworkTopology() {
             y1={RED.y + NODE_H / 2}
             x2={BLUE.x}
             y2={BLUE.y + NODE_H / 2}
-            markerEnd={attackBlue ? "url(#arrow-blue)" : "url(#arrow-default)"}
-            style={{ stroke: attackBlue ? "#3b82f6" : "#64748b" }}
+            markerEnd={attackBlue ? "url(#arrow-red)" : "url(#arrow-default)"}
+            style={{ stroke: attackBlue ? "#ef4444" : "#64748b" }}
           />
         </g>
 
@@ -87,51 +106,66 @@ export function NetworkTopology() {
         {/* Red Team node */}
         <g transform={`translate(${RED.x}, ${RED.y})`}>
           <rect
-            className={nodeClasses("red", attackBlue || attackHoneypot, false)}
+            className={nodeClass("red_team", cards.red_team.tone)}
             width={NODE_W}
             height={NODE_H}
             rx="8"
           />
+          <circle className={dotClass(cards.red_team.tone)} cx={NODE_W - 16} cy={16} r={4} />
           <text className="topo-node-title" x={NODE_W / 2} y={28} textAnchor="middle">
             {ENTITY_LABELS.red_team}
           </text>
-          <text className="topo-node-sub" x={NODE_W / 2} y={46} textAnchor="middle">
-            {attackBlue || attackHoneypot ? "ATTACKING" : "IDLE"}
+          <text
+            className={`topo-node-sub topo-sub-${cards.red_team.tone}`}
+            x={NODE_W / 2}
+            y={46}
+            textAnchor="middle"
+          >
+            {cards.red_team.label}
           </text>
         </g>
 
         {/* Blue Team node */}
         <g transform={`translate(${BLUE.x}, ${BLUE.y})`}>
           <rect
-            className={nodeClasses("blue", attackBlue, false)}
+            className={nodeClass("blue_team", cards.blue_team.tone)}
             width={NODE_W}
             height={NODE_H}
             rx="8"
           />
+          <circle className={dotClass(cards.blue_team.tone)} cx={NODE_W - 16} cy={16} r={4} />
           <text className="topo-node-title" x={NODE_W / 2} y={28} textAnchor="middle">
             {ENTITY_LABELS.blue_team}
           </text>
-          <text className="topo-node-sub" x={NODE_W / 2} y={46} textAnchor="middle">
-            {attackBlue ? "UNDER ATTACK" : "PROTECTED"}
+          <text
+            className={`topo-node-sub topo-sub-${cards.blue_team.tone}`}
+            x={NODE_W / 2}
+            y={46}
+            textAnchor="middle"
+          >
+            {cards.blue_team.label}
           </text>
         </g>
 
         {/* Honeypot node */}
         <g transform={`translate(${HONEY.x}, ${HONEY.y})`}>
           <rect
-            className={nodeClasses("honeypot", attackHoneypot, honeypotCaptured, honeypotStatus)}
+            className={nodeClass("honeypot", cards.honeypot.tone)}
             width={NODE_W}
             height={NODE_H}
             rx="8"
           />
+          <circle className={dotClass(cards.honeypot.tone)} cx={NODE_W - 16} cy={16} r={4} />
           <text className="topo-node-title" x={NODE_W / 2} y={28} textAnchor="middle">
             {ENTITY_LABELS.honeypot}
           </text>
-          <text className="topo-node-sub" x={NODE_W / 2} y={46} textAnchor="middle">
-            {honeypotStatus === "initializing" ? "INITIALIZING" :
-             honeypotStatus === "armed" ? "ARMED" :
-             honeypotStatus === "active" ? "ACTIVE" :
-             honeypotCaptured ? "CAPTURED" : "DECOY"}
+          <text
+            className={`topo-node-sub topo-sub-${cards.honeypot.tone}`}
+            x={NODE_W / 2}
+            y={46}
+            textAnchor="middle"
+          >
+            {cards.honeypot.label}
           </text>
         </g>
       </svg>

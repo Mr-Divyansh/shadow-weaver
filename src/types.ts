@@ -135,7 +135,7 @@ export const PHASE_STEPS: { id: SimulationPhase; label: string }[] = [
 
 // ── Honeypot ────────────────────────────────────────────────────────────────
 
-export type HoneypotStatus = "active" | "waiting" | "captured" | "offline" | "initializing" | "armed";
+export type HoneypotStatus = "active" | "waiting" | "captured" | "offline" | "arming" | "initializing" | "armed";
 
 // ── Approval request (manual mode) ──────────────────────────────────────────
 

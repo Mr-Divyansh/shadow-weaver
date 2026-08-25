@@ -7,19 +7,25 @@
 }
 
 .honeypot-panel[data-status="active"] {
-  border: 1px solid rgba(167, 139, 250, 0.3);
-  box-shadow: 0 0 12px rgba(167, 139, 250, 0.2);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  box-shadow: 0 0 18px rgba(167, 139, 250, 0.3);
+}
+
+.honeypot-panel[data-status="captured"] {
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  box-shadow: 0 0 20px rgba(167, 139, 250, 0.35);
 }
 
 .honeypot-panel[data-status="armed"] {
-  border: 1px solid rgba(167, 139, 250, 0.4);
-  box-shadow: 0 0 16px rgba(167, 139, 250, 0.3);
-  animation: panel-armed-glow 2s ease-in-out infinite;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  box-shadow: 0 0 14px rgba(167, 139, 250, 0.22);
+  animation: panel-armed-glow 2.4s ease-in-out infinite;
 }
 
+.honeypot-panel[data-status="arming"],
 .honeypot-panel[data-status="initializing"] {
-  border: 1px solid rgba(156, 163, 175, 0.3);
-  animation: panel-initializing 1.5s ease-in-out infinite;
+  border: 1px solid rgba(156, 163, 175, 0.35);
+  animation: panel-arming 1.8s ease-in-out infinite;
 }
 
 .honeypot-status-row {
@@ -178,18 +184,18 @@
 /* Panel animations */
 @keyframes panel-armed-glow {
   0%, 100% {
-    box-shadow: 0 0 16px rgba(167, 139, 250, 0.3);
-    border-color: rgba(167, 139, 250, 0.4);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.18);
+    border-color: rgba(167, 139, 250, 0.3);
   }
   50% {
-    box-shadow: 0 0 24px rgba(167, 139, 250, 0.5);
-    border-color: rgba(167, 139, 250, 0.6);
+    box-shadow: 0 0 18px rgba(167, 139, 250, 0.32);
+    border-color: rgba(167, 139, 250, 0.45);
   }
 }
 
-@keyframes panel-initializing {
+@keyframes panel-arming {
   0%, 100% {
-    opacity: 0.8;
+    opacity: 0.85;
     border-color: rgba(156, 163, 175, 0.3);
   }
   50% {
@@ -218,6 +224,7 @@
     animation: none;
   }
   .honeypot-panel[data-status="armed"],
+  .honeypot-panel[data-status="arming"],
   .honeypot-panel[data-status="initializing"] {
     animation: none;
   }

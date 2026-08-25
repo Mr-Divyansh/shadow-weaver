@@ -1,4 +1,5 @@
 import { useAppState } from "../store";
+import { deriveEntityStates } from "../entityState";
 
 import "./HoneypotPanel.css";
 
@@ -10,6 +11,7 @@ function statusDot(status: string) {
       return <span className="dot dot-info" aria-hidden="true" />;
     case "captured":
       return <span className="dot dot-critical dot-live" aria-hidden="true" />;
+    case "arming":
     case "initializing":
       return <span className="dot dot-warning dot-pulse" aria-hidden="true" />;
     case "armed":
@@ -23,19 +25,14 @@ export function HoneypotPanel() {
   const state = useAppState();
   const h = state.honeypot;
   const captured = h.status === "captured";
+  const derived = deriveEntityStates(state).honeypot;
 
+  // The visible status label is derived from the real application state so
+  // the panel always agrees with the topology cards (single source of truth).
   const statusLabel =
-    h.status === "active"
-      ? "ACTIVE"
-      : h.status === "waiting"
-        ? "WAITING"
-        : h.status === "captured"
-          ? "CAPTURED"
-          : h.status === "initializing"
-            ? "INITIALIZING"
-            : h.status === "armed"
-              ? "ARMED"
-              : "OFFLINE";
+    h.status === "offline"
+      ? "OFFLINE"
+      : derived.label;
 
   return (
     <div className="honeypot-panel" data-status={h.status}>

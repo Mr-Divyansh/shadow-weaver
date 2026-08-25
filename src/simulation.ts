@@ -50,8 +50,6 @@ class MockProvider implements DataProvider {
   private simTimers: ReturnType<typeof setTimeout>[] = [];
   private healthInterval: ReturnType<typeof setInterval> | null = null;
   private trafficInterval: ReturnType<typeof setInterval> | null = null;
-  // Drives the simulated target's own periodic events while in demo mode.
-  private demoSimInterval: ReturnType<typeof setTimeout> | null = null;
   // Random-walk state so the traffic line flows smoothly instead of jumping
   // to a brand-new random value every tick.
   private trafficLevel = 45;
@@ -97,32 +95,11 @@ class MockProvider implements DataProvider {
     this.callbacks = callbacks;
     callbacks.onConnectionState("connecting");
 
-    // Check target config and start demo simulation if in demo target mode
-    const state = store.getState();
-    const targetConfig = state.target?.config;
-    const demoTarget = targetConfig?.mode === "demo" ? targetConfig.demo : null;
-    const isDemoTarget = Boolean(demoTarget?.targetIP);
-
     // Connected
     this.timeout(() => {
       callbacks.onConnectionState("connected");
       this.emit(event("connection_established", "success", { message: "Real-time stream established" }));
       this.emit(event("system_online", "success", { message: "Shadow-Weaver Suite is online" }));
-
-      // Emit target connection event
-      if (demoTarget) {
-        this.emit(event("target_connected", "success", {
-          message: `Protected target ${demoTarget.targetName} (${demoTarget.targetIP}:${demoTarget.port}) connected — ${demoTarget.environment}`,
-          target: `${demoTarget.targetIP}:${demoTarget.port}`,
-        }));
-        store.setTargetStatus({
-          status: "demo_connected",
-          mode: "demo",
-        });
-      }
-
-      // Initialize honeypot first, then system online
-      this.initializeHoneypotSequence();
 
       // Live traffic
       this.trafficInterval = setInterval(() => {
@@ -142,45 +119,16 @@ class MockProvider implements DataProvider {
       this.timers.push(this.healthInterval as unknown as ReturnType<typeof setTimeout>);
     }, 900);
 
-    // Start demo target simulation if applicable
-    if (isDemoTarget) {
-      this.startDemoTargetSimulation();
-    }
-
     // Offline simulation toggle (for demo of connection states)
     this.timeout(() => {
       // Intentionally unreachable in normal flow; hook for debugging
     }, 100000);
   }
 
-  private initializeHoneypotSequence() {
-    // Step 1: Honeypot initialization
-    store.setHoneypotStatus("initializing");
-    this.emit(event("honeypot_active", "info", { message: "Honeypot deception environment initializing", target: HONEYPOT_IP }));
-
-    // Step 2: After delay, honeypot becomes armed
-    this.simTimeout(() => {
-      store.setHoneypotStatus("armed");
-      this.emit(event("honeypot_waiting", "info", { message: "Honeypot armed and ready for sessions", target: HONEYPOT_IP }));
-    }, 300);
-
-    // Step 3: After delay, honeypot becomes active
-    this.simTimeout(() => {
-      store.setHoneypotStatus("active");
-      this.emit(event("honeypot_active", "info", { message: "Honeypot deception environment active", target: HONEYPOT_IP }));
-      this.emit(event("system_online", "info", { message: "All three environments reporting healthy" }));
-    }, 800);
-  }
-
   disconnect() {
     this.timers.forEach((t) => clearTimeout(t));
     if (this.healthInterval) clearInterval(this.healthInterval);
     if (this.trafficInterval) clearInterval(this.trafficInterval);
-    // Stop demo target simulation if running
-    if (this.demoSimInterval) {
-      clearTimeout(this.demoSimInterval);
-      this.demoSimInterval = null;
-    }
     this.callbacks?.onConnectionState("disconnected");
     this.callbacks = null;
   }
@@ -207,6 +155,7 @@ class MockProvider implements DataProvider {
     this.emit(event("attack_started", "high", { source: RED_IP, target: BLUE_IP, message: "Red Team attack initiated" }));
     this.emit(event("service_discovered", "info", { source: RED_IP, target: BLUE_IP, message: "Target services identified" }));
     store.setTopology({ attackActive: true, attackTarget: "blue_team" });
+    store.setHoneypotStatus("active");
     store.setOverview({ activeThreats: 1 });
 
     this.simTimeout(() => {
@@ -314,87 +263,9 @@ class MockProvider implements DataProvider {
     store.setTopology({ attackActive: false, attackTarget: null });
     store.setSimulation({ phase: "ready", running: false, stopped: true });
     store.setApproval(null);
+    store.clearHoneypotSession();
     store.setOverview({ activeThreats: 0 });
     this.emit(event("simulation_stopped", "warning", { message: "Simulation stopped by operator" }));
-  }
-
-  private startDemoTargetSimulation() {
-    // Generate realistic SOC telemetry for the demo target lifecycle
-    const tick = () => {
-      const o = store.getState().overview;
-      // Randomly advance the demo lifecycle stages
-      const phase = store.getState().simulation.phase;
-      const random = Math.random();
-
-      // Phase progression: ready → attack → detection → honeypot → capture → containment → completed
-      if (phase === "ready" && random < 0.1) {
-        store.setSimulation({ phase: "attack" as any });
-        store.setTopology({ attackActive: true, attackTarget: "blue_team" });
-        this.emit(event("attack_started", "high", {
-          source: "DEMO-TARGET",
-          target: "192.0.2.10:8080",
-          message: "Demo target attack started",
-        }));
-      } else if (phase === "attack" && random < 0.15) {
-        store.setSimulation({ phase: "detection" as any });
-        this.emit(event("threat_detected", "high", {
-          source: "192.168.50.40",
-          target: "192.0.2.10:8080",
-          message: "Suspicious activity detected on demo target",
-        }));
-        store.setOverview({ threatsDetected: o.threatsDetected + 1 });
-      } else if (phase === "detection" && random < 0.15) {
-        store.setSimulation({ phase: "honeypot" as any });
-        this.emit(event("honeypot_active", "info", {
-          source: "orchestrator",
-          target: "192.0.2.10:8080",
-          message: "Honeypot activated for demo target",
-        }));
-      } else if (phase === "honeypot" && random < 0.15) {
-        store.setSimulation({ phase: "capture" as any });
-        this.emit(event("honeypot_session_captured", "critical", {
-          source: "192.168.50.40",
-          target: "192.0.2.10:8080",
-          sessionId: `SES-${Math.floor(1000 + Math.random() * 9000)}`,
-          attackType: "Simulated brute-force",
-          message: "Demo session captured by honeypot",
-        }));
-        store.setFingerprint({
-          sourceIp: "192.168.50.40",
-          sessionId: `SES-${Math.floor(1000 + Math.random() * 9000)}`,
-          detectionTime: now(),
-          attackType: "Simulated brute-force",
-          severity: "HIGH",
-          sessionStatus: "Captured",
-          honeypotStatus: "Active",
-        });
-      } else if (phase === "capture" && random < 0.15) {
-        store.setSimulation({ phase: "containment" as any });
-        this.emit(event("containment_recommended", "high", {
-          source: "orchestrator",
-          target: "192.0.2.10:8080",
-          message: "Containment recommended for demo target threat",
-        }));
-      } else if (phase === "containment" && random < 0.15) {
-        store.setSimulation({ phase: "completed" as any });
-        store.setTopology({ attackActive: false, attackTarget: null });
-        store.setOverview({
-          activeThreats: 0,
-          threatsContained: o.threatsContained + 1,
-        });
-        this.emit(event("threat_contained", "success", {
-          source: "orchestrator",
-          message: "Threat contained — demo target protected",
-        }));
-        this.emit(event("honeypot_waiting", "info", { message: "Honeypot re-armed and waiting" }));
-        store.setHoneypotStatus("waiting");
-      }
-
-      this.demoSimInterval = setTimeout(tick, 3000 + Math.random() * 2000);
-    };
-
-    if (this.demoSimInterval) return; // already running
-    this.demoSimInterval = setTimeout(tick, 1000);
   }
 
   private setPhase(phase: SimulationPhase) {

