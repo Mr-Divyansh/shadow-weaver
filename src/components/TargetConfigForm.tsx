@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useAppStore } from "../store";
-import { TargetMode, TargetEnvironment, TargetConfig, TargetAuthorizedConfig, TargetDemoConfig, TargetStatus } from "../types";
+import { store } from "../store";
+import { TargetMode, TargetEnvironment, TargetAuthorizedConfig, TargetDemoConfig } from "../types";
+import { connectToTarget } from "../services/targetConnectionService";
 import "./SettingsPanel.css";
 
 function isValidIP(ip: string): boolean {
@@ -20,7 +21,8 @@ interface TargetConfigFormProps {
   authorizedConfig: TargetAuthorizedConfig | null;
   onModeChange: (newMode: TargetMode) => void;
   onConnect: () => void;
-  onDisconnect: () => void;
+  /** Shown as a "Cancel" button when editing an already-configured server. */
+  onCancel?: () => void;
 }
 
 export function TargetConfigForm({
@@ -30,14 +32,14 @@ export function TargetConfigForm({
   authorizedConfig,
   onModeChange,
   onConnect,
-  onDisconnect,
+  onCancel,
 }: TargetConfigFormProps) {
   const [formMode, setFormMode] = useState(mode);
   const [host, setHost] = useState(authorized?.host || demoConfig?.targetIP || "192.0.2.10");
   const [port, setPort] = useState(authorized?.port || demoConfig?.port || 8080);
   const [serverName, setServerName] = useState(authorizedConfig?.serverName || "");
-  const [environment, setEnvironment] = useState(
-    authorized?.environment || demoConfig?.environment || "demo"
+  const [environment, setEnvironment] = useState<TargetEnvironment>(
+    authorized?.environment || (mode === "demo" ? demoConfig?.environment ?? "demo" : "private_network")
   );
   const [authChecked, setAuthChecked] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -94,16 +96,28 @@ export function TargetConfigForm({
 
     if (formMode === "demo") {
       onConnect();
-    } else if (formMode === "authorized_lab") {
-      // Check if we have authorization
-      if (!authChecked) {
-        setError("Please confirm that you own or have explicit authorization to test this server.");
-        setConnecting(false);
-        return;
-      }
-      // Call backend to connect to authorized target
-      // For now, simulate successful connection
+      setConnecting(false);
+      return;
+    }
+
+    // Check if we have authorization
+    if (!authChecked) {
+      setError("Please confirm that you own or have explicit authorization to test this server.");
+      setConnecting(false);
+      return;
+    }
+
+    // Persist the entered host/port right away so it's visible even if the
+    // connection attempt below fails — the user shouldn't have to retype it.
+    store.setTargetConfig({ mode: "authorized_lab", authorized: newConfig, demo: null });
+
+    const result = await connectToTarget(newConfig);
+    if (result.status === "connected") {
+      store.setTargetConnected(newConfig);
       onConnect();
+    } else {
+      store.setTargetConnectionFailed(newConfig, result.message ?? "Unable to reach the server.");
+      setError(result.message ?? "Unable to reach the server.");
     }
 
     setConnecting(false);
@@ -218,10 +232,21 @@ export function TargetConfigForm({
           </div>
 
           <div className="form-group">
+            <label>Environment</label>
+            <select value={environment} onChange={handleEnvironmentChange}>
+              <option value="local_lab">Local Lab</option>
+              <option value="private_network">Private Network</option>
+              <option value="cloud_lab">Cloud Lab</option>
+              <option value="ctf_lab">CTF Lab</option>
+            </select>
+          </div>
+
+          <div className="form-group">
             <label>Server Name (Optional)</label>
             <input
               type="text"
               value={serverName}
+              onChange={(e) => setServerName(e.target.value)}
               placeholder="My Security Lab"
               autoComplete="off"
             />
@@ -255,14 +280,33 @@ export function TargetConfigForm({
             >
               {connecting ? "Connecting..." : "CONNECT"}
             </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => handleModeChange("demo")}
-            >
-              Switch to Demo Mode
-            </button>
+            {onCancel ? (
+              <button type="button" className="btn btn-ghost" onClick={onCancel}>
+                Cancel
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => handleModeChange("demo")}
+              >
+                Switch to Demo Mode
+              </button>
+            )}
           </div>
+
+          {connecting && (
+            <div className="status-row" role="status" aria-live="polite">
+              <span className="status-dot dot-warning" aria-hidden="true" />
+              <span className="status-label">Connecting to {host}:{port}...</span>
+            </div>
+          )}
+          {!connecting && error && (
+            <div className="status-row" role="status" aria-live="polite">
+              <span className="status-dot dot-critical" aria-hidden="true" />
+              <span className="status-label">Connection failed — {error}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

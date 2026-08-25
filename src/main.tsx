@@ -1,10 +1,20 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { provider } from "./simulation";
 import { store } from "./store";
 import type { DataProviderCallbacks } from "./types";
 import "./styles/global.css";
+
+// Wires the mock/live data provider's events into the store. Kept local to
+// this bootstrap file since nothing else needs to construct a provider.
+const callbacks: DataProviderCallbacks = {
+  onEvent: (event) => store.appendEvent(event),
+  onTrafficMetric: (metric) => store.appendTraffic(metric),
+  onHealthMetric: (health) => store.setHealth(health),
+  onConnectionState: (state) => store.setConnection(state),
+};
 
 // Connect to backend provider.
 // If connection fails, the dashboard still mounts and shows an offline state.
@@ -16,15 +26,19 @@ try {
   store.setConnection("disconnected");
   store.setSystemOnline(false);
   store.setOverview({ systemHealth: "Offline" });
-  // Re-throw in development to help debugging
-  if (import.meta.env.DEV) {
-    throw error;
-  }
+  // Log for debugging, but never re-throw — a provider connection failure
+  // must never prevent React from mounting the dashboard.
+  // eslint-disable-next-line no-console
+  console.error("[Shadow-Weaver] provider.connect failed:", error);
 }
 
-// Render the application directly.
+// Render the application directly. The top-level ErrorBoundary here is a
+// last-resort safety net only — Settings has its own scoped boundary so a
+// Settings-only bug never needs to fall back this far.
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary label="Shadow-Weaver">
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );

@@ -85,7 +85,10 @@ export type EventType =
   | "honeypot_waiting"
   | "honeypot_session_captured"
   | "honeypot_command"
-  | "honeypot_offline";
+  | "honeypot_offline"
+  // Protected Target (Settings > Add IP & Port)
+  | "target_connected"
+  | "target_disconnected";
 
 export interface ShadowEvent {
   id?: number;
@@ -214,6 +217,44 @@ export interface TargetStatus {
 
 // ── Backward compatibility: keep AgentTeam for any remaining references ──────
 export type AgentTeam = "red" | "blue";
+
+// ── AI Agent (Red/Blue Team) provider configuration ─────────────────────────
+// Lets each team's autonomous agent be pointed at an AI provider. This is
+// separate from the Protected Target connection above — it configures which
+// model plans/drives that team's behavior, not what it's aimed at.
+
+export type AgentProviderId = "claude" | "glm" | "openai" | "custom";
+
+export const AGENT_PROVIDER_LABELS: Record<AgentProviderId, string> = {
+  claude: "Claude",
+  glm: "GLM",
+  openai: "OpenAI",
+  custom: "Custom",
+};
+
+export type AgentConnectionStatus = "not_connected" | "connecting" | "connected" | "error";
+
+export const AGENT_STATUS_LABELS: Record<AgentConnectionStatus, string> = {
+  not_connected: "Not Connected",
+  connecting: "Connecting...",
+  connected: "Connected",
+  error: "Error",
+};
+
+export interface AgentConfig {
+  provider: AgentProviderId;
+  customProviderName: string;
+  endpoint: string;
+  apiKey: string;
+  model: string;
+}
+
+export interface AgentConnectionState {
+  config: AgentConfig;
+  status: AgentConnectionStatus;
+  error: string | null;
+  connectedAt: string | null;
+}
 
 export function createEmptyAgentConfig(): AgentConfig {
   return { provider: "claude", customProviderName: "", endpoint: "", apiKey: "", model: "" };

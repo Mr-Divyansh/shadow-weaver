@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type {
+  AgentConfig,
+  AgentConnectionState,
+  AgentConnectionStatus,
   AgentTeam,
   ApprovalRequest,
   ConnectionState,
@@ -10,15 +13,56 @@ import type {
   OverviewMetrics,
   ShadowEvent,
   SimulationPhase,
-  TargetMode,
   TargetEnvironment,
   TargetAuthorizedConfig,
-  TargetDemoConfig,
   TargetConfig,
   TargetStatus,
   TrafficMetric,
 } from "./types";
 import { createInitialAgentState } from "./types";
+
+// ── Persisted target configuration ──────────────────────────────────────────
+// Only the non-secret connection fields (host/port/name/environment) are
+// persisted. No passwords, tokens, or API keys ever go into localStorage.
+const TARGET_CONFIG_STORAGE_KEY = "shadow-weaver:target-config";
+
+interface PersistedTargetConfig {
+  serverHost: string;
+  serverPort: number;
+  serverName?: string;
+  environment?: TargetEnvironment;
+}
+
+function loadPersistedTargetConfig(): PersistedTargetConfig | null {
+  try {
+    const raw = localStorage.getItem(TARGET_CONFIG_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.serverHost === "string" && typeof parsed?.serverPort === "number") {
+      return parsed as PersistedTargetConfig;
+    }
+    return null;
+  } catch {
+    // Corrupt or inaccessible storage should never break app startup.
+    return null;
+  }
+}
+
+function savePersistedTargetConfig(config: PersistedTargetConfig) {
+  try {
+    localStorage.setItem(TARGET_CONFIG_STORAGE_KEY, JSON.stringify(config));
+  } catch {
+    // Storage can be unavailable (private browsing, quota, etc.) — non-fatal.
+  }
+}
+
+function clearPersistedTargetConfig() {
+  try {
+    localStorage.removeItem(TARGET_CONFIG_STORAGE_KEY);
+  } catch {
+    // Non-fatal.
+  }
+}
 
 // ── Application state ───────────────────────────────────────────────────────
 
@@ -62,7 +106,7 @@ export interface AppState {
   agents: Record<AgentTeam, AgentConnectionState>;
   settings: {
     open: boolean;
-    tab: "general" | "protected_target" | "status";
+    tab: "general" | "protected_target" | "agents" | "status";
   };
   target: {
     config: TargetConfig;
@@ -103,7 +147,28 @@ const initialState: AppState = {
     blue: createInitialAgentState(),
   },
   settings: { open: false, tab: "protected_target" },
-  target: {
+  target: buildInitialTargetState(),
+};
+
+// A saved server (from a previous session) is restored as config only — the
+// app never auto-reconnects on load, so there's no network activity or
+// loading state tied to startup. The user explicitly reconnects from Settings.
+function buildInitialTargetState(): AppState["target"] {
+  const saved = loadPersistedTargetConfig();
+  if (saved) {
+    const authorized: TargetAuthorizedConfig = {
+      host: saved.serverHost,
+      port: saved.serverPort,
+      serverName: saved.serverName,
+      environment: saved.environment ?? "private_network",
+      authorized: true,
+    };
+    return {
+      config: { mode: "authorized_lab", authorized, demo: null },
+      status: { status: "disconnected", mode: "authorized_lab" },
+    };
+  }
+  return {
     config: {
       mode: "demo",
       authorized: null,
@@ -118,8 +183,8 @@ const initialState: AppState = {
       status: "disconnected",
       mode: "demo",
     },
-  },
-};
+  };
+}
 
 // ── Store implementation ────────────────────────────────────────────────────
 
@@ -217,19 +282,54 @@ setOverview(patch: Partial<OverviewMetrics>) {
     // Update status to connecting
     this.setTargetStatus({ ...status, status: "connecting" });
 
-    // In a full implementation, this would call the backend API.
-    // For now, handle demo mode client-side.
+    // Demo mode has no real backend to reach — resolve client-side only.
+    // Authorized-lab connections are attempted from TargetConfigForm via
+    // targetConnectionService, which then reports the result back through
+    // setTargetConnected()/setTargetConnectionFailed() below.
     if (config.mode === "demo") {
       this.enableTargetDemo();
-    } else if (config.mode === "authorized_lab" && config.authorized) {
-      this.authorizeTargetLab();
-    } else {
+    } else if (!(config.mode === "authorized_lab" && config.authorized)) {
       this.setTargetStatus({
         ...status,
         status: "failed",
         error: "Target not authorized or configuration invalid",
       });
     }
+  }
+
+  // Called once targetConnectionService resolves with a successful handshake.
+  setTargetConnected(authorized: TargetAuthorizedConfig) {
+    this.setTargetConfig({ mode: "authorized_lab", authorized, demo: null });
+    this.setTargetStatus({
+      status: "connected",
+      mode: "authorized_lab",
+      target: {
+        host: authorized.host,
+        port: authorized.port,
+        name: authorized.serverName || authorized.host,
+        environment: authorized.environment,
+      },
+      lastChecked: new Date().toISOString(),
+      error: undefined,
+    });
+    savePersistedTargetConfig({
+      serverHost: authorized.host,
+      serverPort: authorized.port,
+      serverName: authorized.serverName,
+      environment: authorized.environment,
+    });
+  }
+
+  // Called once targetConnectionService resolves with a failure, or throws.
+  setTargetConnectionFailed(authorized: TargetAuthorizedConfig, error: string) {
+    // Keep the entered host/port visible so the user can Retry without
+    // re-typing anything; only the status moves to "failed".
+    this.setTargetConfig({ mode: "authorized_lab", authorized, demo: null });
+    this.setTargetStatus({
+      status: "failed",
+      mode: "authorized_lab",
+      error,
+    });
   }
 
   disconnectTarget() {
@@ -250,6 +350,7 @@ setOverview(patch: Partial<OverviewMetrics>) {
     });
     // Stop any demo simulation
     this.stopDemoSimulation();
+    clearPersistedTargetConfig();
   }
 
   setTargetStatus(patch: Partial<TargetStatus>) {
@@ -267,6 +368,16 @@ setOverview(patch: Partial<OverviewMetrics>) {
           error,
           connectedAt: status === "connected" ? new Date().toISOString() : current.connectedAt,
         },
+      },
+    });
+  }
+
+  setAgentConfig(team: AgentTeam, patch: Partial<AgentConfig>) {
+    const current = this.state.agents[team];
+    this.setState({
+      agents: {
+        ...this.state.agents,
+        [team]: { ...current, config: { ...current.config, ...patch } },
       },
     });
   }

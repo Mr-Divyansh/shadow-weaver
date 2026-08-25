@@ -7,9 +7,6 @@ import type {
   ShadowEvent,
   SimulationPhase,
   TrafficMetric,
-  TargetMode,
-  TargetStatus,
-  TargetConfig,
 } from "./types";
 
 // ── Mock data provider ──────────────────────────────────────────────────────
@@ -53,6 +50,8 @@ class MockProvider implements DataProvider {
   private simTimers: ReturnType<typeof setTimeout>[] = [];
   private healthInterval: ReturnType<typeof setInterval> | null = null;
   private trafficInterval: ReturnType<typeof setInterval> | null = null;
+  // Drives the simulated target's own periodic events while in demo mode.
+  private demoSimInterval: ReturnType<typeof setTimeout> | null = null;
   // Random-walk state so the traffic line flows smoothly instead of jumping
   // to a brand-new random value every tick.
   private trafficLevel = 45;
@@ -101,7 +100,8 @@ class MockProvider implements DataProvider {
     // Check target config and start demo simulation if in demo target mode
     const state = store.getState();
     const targetConfig = state.target?.config;
-    const isDemoTarget = targetConfig?.mode === "demo" && targetConfig?.demo?.targetIP;
+    const demoTarget = targetConfig?.mode === "demo" ? targetConfig.demo : null;
+    const isDemoTarget = Boolean(demoTarget?.targetIP);
 
     // Connected
     this.timeout(() => {
@@ -110,13 +110,10 @@ class MockProvider implements DataProvider {
       this.emit(event("system_online", "success", { message: "Shadow-Weaver Suite is online" }));
 
       // Emit target connection event
-      if (isDemoTarget) {
-        this.emit(event("target.connected", "orchestrator", {
-          host: targetConfig.demo.targetIP,
-          port: targetConfig.demo.port,
-          environment: targetConfig.demo.environment,
-          targetName: targetConfig.demo.targetName,
-          mode: "demo",
+      if (demoTarget) {
+        this.emit(event("target_connected", "success", {
+          message: `Protected target ${demoTarget.targetName} (${demoTarget.targetIP}:${demoTarget.port}) connected — ${demoTarget.environment}`,
+          target: `${demoTarget.targetIP}:${demoTarget.port}`,
         }));
         store.setTargetStatus({
           status: "demo_connected",
@@ -314,7 +311,7 @@ class MockProvider implements DataProvider {
         store.setSimulation({ phase: "reconnaissance" as any });
       } else if (phase === "reconnaissance" && random < 0.15) {
         store.setSimulation({ phase: "active" as any });
-        store.setTopology({ attackActive: true, attackTarget: "demo_target", reconActive: true });
+        store.setTopology({ attackActive: true, attackTarget: "blue_team", reconActive: true });
         this.emit(event("reconnaissance_started", "info", {
           source: "DEMO-TARGET",
           target: "192.0.2.10:8080",
