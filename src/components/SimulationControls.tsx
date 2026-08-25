@@ -62,7 +62,7 @@ export function SimulationControls() {
         </button>
 
         <button
-          className={`btn ${confirmKill ? "btn-danger" : "btn-secondary"} kill-btn`}
+          className={confirmKill ? "btn btn-danger" : "btn btn-secondary"}
           onClick={kill}
           disabled={!connected || (!running && !confirmKill)}
           aria-label="Stop the active simulation"

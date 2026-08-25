@@ -148,7 +148,7 @@ export function AgentConfigCard({ team, state }: AgentConfigCardProps) {
 
         <button
           type="button"
-          className={`btn ${isRed ? "btn-danger" : "btn-primary"} agent-connect-btn`}
+          className={`btn ${isRed ? "btn-danger" : "btn-primary"}`}
           onClick={handleConnect}
           disabled={connecting}
         >
