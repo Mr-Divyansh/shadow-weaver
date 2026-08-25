@@ -103,4 +103,9 @@ SSH_SPRAY_WINDOW = 30
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
 GENERIC_WEBHOOKS = os.environ.get("GENERIC_WEBHOOKS", "")
+
+# Demo credentials (loaded from .env, override with your own values if needed)
+DEMO_API_KEY = os.environ.get("DEMO_API_KEY", "sk-live-9f8e7d6c5b4a3")
+DEMO_DB_PASSWORD = os.environ.get("DEMO_DB_PASSWORD", "S3cret!")
+DEMO_ADMIN_TOKEN = os.environ.get("DEMO_ADMIN_TOKEN", "tok-2026-backup-root")
 ALERT_COOLDOWN = 60

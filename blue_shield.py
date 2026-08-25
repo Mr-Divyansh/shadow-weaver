@@ -307,8 +307,8 @@ async def api_config(request):
     if ip in blocked:
         return blocked_resp(ip)
     return web.json_response({"db_host": "db.shadow.local", "db_user": "root",
-                              "db_pass": "S3cret!", "version": SERVER_VERSION,
-                              "api_key": "sk-live-9f8e7d6c5b4a3"})
+                              "db_pass": config.DEMO_DB_PASSWORD, "version": SERVER_VERSION,
+                              "api_key": config.DEMO_API_KEY})
 
 
 async def api_ping(request):
@@ -332,8 +332,8 @@ async def backup_config_bak(request):
     if ip in blocked:
         return blocked_resp(ip)
     return web.json_response({"file": "config.bak",
-        "db": {"host": "db.shadow.local", "user": "root", "password": "S3cret!"},
-        "api_key": "sk-live-9f8e7d6c5b4a3", "admin_token": "tok-2026-backup-root"})
+        "db": {"host": "db.shadow.local", "user": "root", "password": config.DEMO_DB_PASSWORD},
+        "api_key": config.DEMO_API_KEY, "admin_token": config.DEMO_ADMIN_TOKEN})
 
 
 async def git_config(request):
@@ -361,7 +361,7 @@ async def debug_view(request):
     if ip in blocked:
         return blocked_resp(ip)
     return web.json_response({"debug": True, "stack": "aiohttp.web", "version": SERVER_VERSION,
-        "env": {"APP_ENV": "production", "DB_PASS": "S3cret!", "FLAG_STAGE": "staging"},
+        "env": {"APP_ENV": "production", "DB_PASS": config.DEMO_DB_PASSWORD, "FLAG_STAGE": "staging"},
         "note": "debug mode enabled in production"})
 
 
