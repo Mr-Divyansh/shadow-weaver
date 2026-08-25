@@ -97,7 +97,7 @@ shadow-weaver/
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Environment template
 ├── LICENSE                    # MIT License
-├── CONTRIBUTING.md            # Contributing guide
+<!-- Contributing guide removed for final demo -->
 └── CHANGELOG.md               # Version history
 ```
 
@@ -344,7 +344,7 @@ python backend/ssh_monitor.py
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See the contributing guidelines section in the project root (note: contributing guide removed for final demo).
 
 ## License
 
