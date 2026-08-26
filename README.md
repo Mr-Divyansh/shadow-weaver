@@ -95,7 +95,6 @@ shadow-weaver/
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Environment template
 ├── LICENSE                    # MIT License
-<!-- Contributing guide removed for final demo -->
 └── CHANGELOG.md               # Version history
 ```
 
@@ -142,7 +141,7 @@ Connect Shadow-Weaver to an authorized server or isolated security lab that you 
 - **Server IP / Host**: `192.168.1.100` (or your lab's IP)
 - **Server Port**: `8080` (or your lab's port)
 - **Server Name** (optional): `My Security Lab`
-- **Environment**: 
+- **Environment**:
   - Local Lab
   - Private Network
   - Cloud Lab
@@ -339,10 +338,6 @@ python backend/honeypot.py
 python backend/red_team.py
 python backend/ssh_monitor.py
 ```
-
-## Contributing
-
-See the contributing guidelines section in the project root (note: contributing guide removed for final demo).
 
 ## License
 
