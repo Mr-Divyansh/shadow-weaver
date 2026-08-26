@@ -37,9 +37,9 @@ export function Header() {
   return (
     <header className="app-header">
             <div className="header-brand">
-        <img
-          src="/logo.png"
-          alt=""
+                <img
+          src="assets/Shadow-weaver-logo.png"
+          alt="Shadow-Weaver logo"
           className="brand-logo"
         />
         <span className="brand-name">Shadow-Weaver</span>
