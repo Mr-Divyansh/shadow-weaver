@@ -44,8 +44,8 @@ export function deriveEntityStates(state: AppState): EntityStates {
 
   // Authoritative lifecycle: at any moment only ONE entity is "doing work".
   // Everything else is calm — NO active colour / glow just from existing.
-  let red: EntityCardState = idle("READY / IDLE");
-  let blue: EntityCardState = idle("SECURE / READY");
+  let red: EntityCardState = idle("DISENGAGED");
+  let blue: EntityCardState = idle("STANDBY / READY");
   let honeypot: EntityCardState = idle("STANDBY / READY");
 
   switch (phase) {
@@ -63,7 +63,7 @@ export function deriveEntityStates(state: AppState): EntityStates {
     // STATE 4 — Honeypot deception. Blue is done, honeypot takes over.
     case "honeypot":
       blue = idle("SECURE / WAITING");
-      honeypot = { tone: "capturing", label: "DECEIVING / CAPTURING" };
+      honeypot = { tone: "capturing", label: "CAPTURING / PROTECTING" };
       break;
 
     // Honeypot captured the attacker session.

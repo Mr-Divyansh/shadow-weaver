@@ -5,17 +5,29 @@ import type { EntityId } from "../types";
 
 import "./NetworkTopology.css";
 
-// Simple, readable SVG topology:
-//   Red Team ──▶ Blue Team
-//   Red Team ──▶ Honeypot
+// Vertical topology:
+//   RED TEAM   (top)
+//      │  ▼
+//   BLUE TEAM  (middle)
+//      │  ▼
+//   HONEYPOT  (bottom)
+// Straight single connectors — no diagonal/crossing lines, so marker arrowheads
+// can never overlap another node or escape the panel.
 
-const NODE_W = 140;
+const NODE_W = 200;
 const NODE_H = 64;
-const GAP = 60;
+const GAP = 56;
+const X0 = 40;
+const TOP = 20;
 
-const RED = { x: 40, y: 20 };
-const BLUE = { x: 40 + NODE_W + GAP, y: 20 };
-const HONEY = { x: 40 + NODE_W + GAP, y: 20 + NODE_H + GAP };
+const CX = X0 + NODE_W / 2;
+
+const RED = { x: X0, y: TOP };
+const BLUE = { x: X0, y: TOP + NODE_H + GAP };
+const HONEY = { x: X0, y: TOP + (NODE_H + GAP) * 2 };
+
+const SVG_W = X0 + NODE_W + 40;
+const SVG_H = TOP + (NODE_H + GAP) * 2 + NODE_H + 20;
 
 // Tones that keep the small status indicator dot animated on the node.
 const LIVE_TONES = new Set<string>([
@@ -44,16 +56,39 @@ function dotClass(tone: string): string {
   return `topo-node-dot topo-dot-${tone}${LIVE_TONES.has(tone) ? " topo-dot-live" : ""}`;
 }
 
+// Long state labels ("UNDER ATTACK / DEFENDING") get a tighter font + kerning so
+// the text always stays inside the node card instead of spilling past the edge.
+function subClass(tone: string, label: string): string {
+  const long = label.length > 15;
+  return `topo-node-sub topo-sub-${tone}${long ? " topo-sub-long" : ""}`;
+}
+
+function renderNode(kind: EntityId, pos: { x: number; y: number }, tone: string, label: string) {
+  return (
+    <g key={kind} transform={`translate(${pos.x}, ${pos.y})`}>
+      <rect className={nodeClass(kind, tone)} width={NODE_W} height={NODE_H} rx="8" />
+      <circle className={dotClass(tone)} cx={NODE_W - 16} cy={16} r={4} />
+      <text className="topo-node-title" x={NODE_W / 2} y={28} textAnchor="middle">
+        {ENTITY_LABELS[kind]}
+      </text>
+      <text className={subClass(tone, label)} x={NODE_W / 2} y={46} textAnchor="middle">
+        {label}
+      </text>
+    </g>
+  );
+}
+
 export function NetworkTopology() {
   const state = useAppState();
-  const t = state.topology;
   const cards = deriveEntityStates(state);
+  const phase = state.simulation.phase;
 
-  const attackBlue = t.attackActive && t.attackTarget === "blue_team";
-  const attackHoneypot = t.attackActive && t.attackTarget === "honeypot";
-
-  const svgW = 40 * 2 + NODE_W * 2 + GAP;
-  const svgH = 40 + NODE_H * 2 + GAP + 20;
+  // Connection activity is state-driven:
+  //   RED → BLUE      flows while the Red Team attack is in progress
+  //   BLUE → HONEYPOT flows while the honeypot is protecting / capturing
+  // On idle every connector is a dim static line (no moving arrows).
+  const edgeRedActive = phase === "attack";
+  const edgeHoneyActive = phase === "honeypot" || phase === "capture";
 
   return (
     <div
@@ -61,7 +96,7 @@ export function NetworkTopology() {
       role="img"
       aria-label="Cyber defense topology showing Red Team, Blue Team and Honeypot"
     >
-      <svg className="topology" viewBox={`0 0 ${svgW} ${svgH}`} role="presentation">
+      <svg className="topology" viewBox={`0 0 ${SVG_W} ${SVG_H}`} role="presentation">
         <defs>
           <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
@@ -77,97 +112,35 @@ export function NetworkTopology() {
           </marker>
         </defs>
 
-        {/* Edge: Red → Blue */}
-        <g className={`topo-edge-wrap ${attackBlue ? "attack" : ""}`}>
+        {/* Edge: Red Team → Blue Team */}
+        <g className={`topo-edge-wrap${edgeRedActive ? " attack" : ""}`}>
           <line
             className="topo-edge"
-            x1={RED.x + NODE_W}
-            y1={RED.y + NODE_H / 2}
-            x2={BLUE.x}
-            y2={BLUE.y + NODE_H / 2}
-            markerEnd={attackBlue ? "url(#arrow-red)" : "url(#arrow-default)"}
-            style={{ stroke: attackBlue ? "#ef4444" : "#64748b" }}
-          />
-        </g>
-
-        {/* Edge: Red → Honeypot */}
-        <g className={`topo-edge-wrap ${attackHoneypot ? "attack" : ""}`}>
-          <line
-            className="topo-edge topo-edge-honey"
-            x1={RED.x + NODE_W - 20}
+            x1={CX}
             y1={RED.y + NODE_H}
-            x2={HONEY.x + 20}
+            x2={CX}
+            y2={BLUE.y}
+            markerEnd={edgeRedActive ? "url(#arrow-red)" : "url(#arrow-default)"}
+            style={{ stroke: edgeRedActive ? "#ef4444" : "#64748b" }}
+          />
+        </g>
+
+        {/* Edge: Blue Team → Honeypot */}
+        <g className={`topo-edge-wrap${edgeHoneyActive ? " attack" : ""}`}>
+          <line
+            className="topo-edge"
+            x1={CX}
+            y1={BLUE.y + NODE_H}
+            x2={CX}
             y2={HONEY.y}
-            markerEnd={attackHoneypot ? "url(#arrow-honey)" : "url(#arrow-default)"}
-            style={{ stroke: attackHoneypot ? "#a78bfa" : "#64748b" }}
+            markerEnd={edgeHoneyActive ? "url(#arrow-honey)" : "url(#arrow-default)"}
+            style={{ stroke: edgeHoneyActive ? "#a78bfa" : "#64748b" }}
           />
         </g>
 
-        {/* Red Team node */}
-        <g transform={`translate(${RED.x}, ${RED.y})`}>
-          <rect
-            className={nodeClass("red_team", cards.red_team.tone)}
-            width={NODE_W}
-            height={NODE_H}
-            rx="8"
-          />
-          <circle className={dotClass(cards.red_team.tone)} cx={NODE_W - 16} cy={16} r={4} />
-          <text className="topo-node-title" x={NODE_W / 2} y={28} textAnchor="middle">
-            {ENTITY_LABELS.red_team}
-          </text>
-          <text
-            className={`topo-node-sub topo-sub-${cards.red_team.tone}`}
-            x={NODE_W / 2}
-            y={46}
-            textAnchor="middle"
-          >
-            {cards.red_team.label}
-          </text>
-        </g>
-
-        {/* Blue Team node */}
-        <g transform={`translate(${BLUE.x}, ${BLUE.y})`}>
-          <rect
-            className={nodeClass("blue_team", cards.blue_team.tone)}
-            width={NODE_W}
-            height={NODE_H}
-            rx="8"
-          />
-          <circle className={dotClass(cards.blue_team.tone)} cx={NODE_W - 16} cy={16} r={4} />
-          <text className="topo-node-title" x={NODE_W / 2} y={28} textAnchor="middle">
-            {ENTITY_LABELS.blue_team}
-          </text>
-          <text
-            className={`topo-node-sub topo-sub-${cards.blue_team.tone}`}
-            x={NODE_W / 2}
-            y={46}
-            textAnchor="middle"
-          >
-            {cards.blue_team.label}
-          </text>
-        </g>
-
-        {/* Honeypot node */}
-        <g transform={`translate(${HONEY.x}, ${HONEY.y})`}>
-          <rect
-            className={nodeClass("honeypot", cards.honeypot.tone)}
-            width={NODE_W}
-            height={NODE_H}
-            rx="8"
-          />
-          <circle className={dotClass(cards.honeypot.tone)} cx={NODE_W - 16} cy={16} r={4} />
-          <text className="topo-node-title" x={NODE_W / 2} y={28} textAnchor="middle">
-            {ENTITY_LABELS.honeypot}
-          </text>
-          <text
-            className={`topo-node-sub topo-sub-${cards.honeypot.tone}`}
-            x={NODE_W / 2}
-            y={46}
-            textAnchor="middle"
-          >
-            {cards.honeypot.label}
-          </text>
-        </g>
+        {renderNode("red_team", RED, cards.red_team.tone, cards.red_team.label)}
+        {renderNode("blue_team", BLUE, cards.blue_team.tone, cards.blue_team.label)}
+        {renderNode("honeypot", HONEY, cards.honeypot.tone, cards.honeypot.label)}
       </svg>
 
       <div className="topology-legend" aria-label="Topology legend">

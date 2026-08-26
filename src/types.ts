@@ -171,6 +171,8 @@ export interface DataProvider {
   disconnect(): void;
   startSimulation(): void;
   stopSimulation(): void;
+  /** Cancels an in-flight simulation's timers without mutating store state. */
+  abortSimulation(): void;
   approveContainment(): void;
   ignoreContainment(): void;
   setMode(mode: OperatingMode): void;

@@ -143,6 +143,15 @@ class MockProvider implements DataProvider {
   }
 
   startSimulation() {
+    const s = store.getState();
+    // Guard: only one Instant Attack lifecycle at a time. Rapid double-clicks
+    // (or click + keyboard) must never create two overlapping simulations.
+    if (s.simulation.running) return;
+    // Guard: never start a second lifecycle while Demo Mode is live (agents
+    // "connected" or protected target demo) — one active lifecycle at a time.
+    if (s.agents.red.status === "connected" && s.agents.blue.status === "connected") return;
+    if (s.target.status.status === "demo_connected") return;
+
     // Clear any leftover timers from a previous run (e.g. Kill Switch was
     // hit mid-simulation) so stale callbacks can never fire into a new run.
     this.clearSimTimers();
@@ -256,6 +265,13 @@ class MockProvider implements DataProvider {
   ignoreContainment() {
     store.setApproval(null);
     this.emit(event("containment_ignored", "warning", { message: "Containment ignored by operator" }));
+  }
+
+  // Cancels a running Instant Attack's timers WITHOUT mutating store state.
+  // Used so a Demo Mode start can't overlap a live automation run (the demo
+  // lifecycle resets the store itself).
+  abortSimulation() {
+    this.clearSimTimers();
   }
 
   stopSimulation() {

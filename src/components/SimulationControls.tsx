@@ -11,6 +11,11 @@ export function SimulationControls() {
   const connected = state.connection === "connected";
   const [confirmKill, setConfirmKill] = useState(false);
 
+  // Demo Mode owns the lifecycle while it is live — one active lifecycle at a
+  // time, so the Instant Attack button is disabled until demo is switched off.
+  const demoOn =
+    state.agents.red.status === "connected" && state.agents.blue.status === "connected";
+
   const currentIdx = PHASE_STEPS.findIndex((s) => s.id === sim.phase);
   const running = sim.running;
   const completed = sim.phase === "completed";
@@ -20,6 +25,10 @@ export function SimulationControls() {
       // Clear the previous run's data so the new run starts from a clean
       // slate instead of stacking on top of old threat/honeypot state.
       store.resetSimulation();
+    } else if (sim.stopped) {
+      // A previous run was killed — clear the stale "SIMULATION STOPPED"
+      // banner so it doesn't linger while the new lifecycle runs.
+      store.setSimulation({ stopped: false });
     }
     provider.startSimulation();
   }
@@ -29,7 +38,12 @@ export function SimulationControls() {
       setConfirmKill(true);
       return;
     }
-    provider.stopSimulation();
+    // Emergency stop: kill the demo loop too if it is the active lifecycle.
+    if (demoOn) {
+      store.disableDemoMode();
+    } else {
+      provider.stopSimulation();
+    }
     setConfirmKill(false);
   }
 
@@ -56,18 +70,19 @@ export function SimulationControls() {
         <button
           className="btn btn-primary"
           onClick={start}
-          disabled={!connected || running}
+          disabled={!connected || running || demoOn}
+          title={demoOn ? "Demo mode is running — disable it before starting a simulation" : undefined}
         >
-          {running ? "RUNNING..." : completed ? "RUN AGAIN" : "START SIMULATION"}
+          {demoOn ? "DEMO ACTIVE" : running ? "RUNNING..." : completed ? "RUN AGAIN" : "START SIMULATION"}
         </button>
 
         <button
           className={confirmKill ? "btn btn-danger" : "btn btn-secondary"}
           onClick={kill}
-          disabled={!connected || (!running && !confirmKill)}
-          aria-label="Stop the active simulation"
+          disabled={!connected || (!running && !demoOn && !confirmKill)}
+          aria-label="Stop the active simulation or demo"
         >
-          {confirmKill ? "CONFIRM STOP?" : "KILL SWITCH"}
+          {confirmKill ? "CONFIRM STOP?" : demoOn ? "STOP DEMO" : "KILL SWITCH"}
         </button>
       </div>
 

@@ -20,6 +20,9 @@ const callbacks: DataProviderCallbacks = {
 // If connection fails, the dashboard still mounts and shows an offline state.
 try {
   provider.connect(callbacks);
+  // Lets Demo Mode cancel any in-flight Instant Attack when it starts, so the
+  // two lifecycles can never run at the same time.
+  store.registerProviderAbort(() => provider.abortSimulation());
 } catch (error) {
   // Log error for debugging but don't prevent React from mounting
   // Store offline state so UI shows "Backend Offline" instead of black screen

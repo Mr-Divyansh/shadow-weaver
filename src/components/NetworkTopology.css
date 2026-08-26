@@ -33,12 +33,19 @@
 
 .topo-node-sub {
   fill: var(--text-muted);
-  font-size: 10px;
+  font-size: 9.5px;
   font-family: var(--font-mono);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   pointer-events: none;
   transition: fill 300ms ease-out;
+}
+
+/* Longer state labels (e.g. "UNDER ATTACK / DEFENDING") get a tighter font and
+   kerning so the text always stays inside its node instead of overflowing. */
+.topo-node-sub.topo-sub-long {
+  font-size: 8.5px;
+  letter-spacing: 0.03em;
 }
 
 /* Neutral (inactive) state — calm grey cards, no glow. */
