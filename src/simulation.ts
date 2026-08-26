@@ -150,30 +150,32 @@ class MockProvider implements DataProvider {
     const mode = store.getState().mode;
     this.emit(event("simulation_started", "info", { message: "Controlled attack simulation started (simulated demo data)" }));
 
-    // Phase 1 — Attack
+    // Phase 1 — Attack. Only the Red Team is active here; the honeypot stays
+    // on standby so nothing glows before its turn.
     this.setPhase("attack");
     this.emit(event("attack_started", "high", { source: RED_IP, target: BLUE_IP, message: "Red Team attack initiated" }));
     this.emit(event("service_discovered", "info", { source: RED_IP, target: BLUE_IP, message: "Target services identified" }));
     store.setTopology({ attackActive: true, attackTarget: "blue_team" });
-    store.setHoneypotStatus("active");
     store.setOverview({ activeThreats: 1 });
 
     this.simTimeout(() => {
       this.emit(event("suspicious_activity", "warning", { source: RED_IP, target: BLUE_IP, message: "Malicious activity detected on Blue Team environment" }));
     }, 1200);
 
-    // Phase 2 — Detection
+    // Phase 2 — Detection: Red stands down, Blue responds.
     this.simTimeout(() => {
       this.setPhase("detection");
       this.emit(event("threat_detected", "high", { source: RED_IP, target: BLUE_IP, message: "Blue Team detected suspicious activity" }));
       store.setOverview({ threatsDetected: store.getState().overview.threatsDetected + 1 });
     }, 2400);
 
-    // Phase 3 — Honeypot
+    // Phase 3 — Blue completes its response; the attacker is diverted to the
+    // honeypot. Only the honeypot becomes active at this point.
     this.simTimeout(() => {
       this.setPhase("honeypot");
+      store.setHoneypotStatus("active");
+      store.setTopology({ attackActive: true, attackTarget: "honeypot" });
       this.emit(event("honeypot_active", "info", { message: "Honeypot deception environment activated", target: HONEYPOT_IP }));
-      this.emit(event("honeypot_waiting", "info", { message: "Honeypot waiting for attacker connection" }));
     }, 3600);
 
     // Phase 4 — Capture

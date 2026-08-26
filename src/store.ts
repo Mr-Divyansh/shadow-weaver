@@ -437,26 +437,10 @@ class Store {
     const cancelled = () => this.demoRunId !== runId;
     const stamp = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
 
-    // Phase 0 — Honeypot arms before anything else happens. Red/Blue stay neutral.
-    this.setHoneypotStatus("arming");
-    await wait(900);
-    if (cancelled()) return;
-    this.setHoneypotStatus("armed");
-    this.appendEvent({
-      type: "honeypot_waiting",
-      severity: "info",
-      timestamp: stamp(),
-      message: "Honeypot armed — deception layer ready before the attack begins",
-    });
-
-    // Short cinematic transition while the trap sits ARMED.
-    await wait(1900);
-    if (cancelled()) return;
-
-    // Phase 1 — Attack begins.
+    // Phase 1 — IDLE → ATTACK. Nothing is active before this point: the
+    // honeypot stays on standby (no arming glow) so only Red glows now.
     this.setSimulation({ phase: "attack", running: true, stopped: false });
     this.setTopology({ attackActive: true, attackTarget: "blue_team" });
-    this.setHoneypotStatus("active");
     this.setOverview({ activeThreats: 1 });
     this.appendEvent({
       type: "attack_started",
@@ -485,8 +469,11 @@ class Store {
     await wait(2200);
     if (cancelled()) return;
 
-    // Phase 3 — Honeypot deception engages the attacker.
+    // Phase 3 — Blue Team has completed its response; the attacker is diverted
+    // to the honeypot. Only the honeypot becomes active at this point.
     this.setSimulation({ phase: "honeypot" });
+    this.setHoneypotStatus("active");
+    this.setTopology({ attackActive: true, attackTarget: "honeypot" });
     this.appendEvent({
       type: "honeypot_active",
       severity: "info",

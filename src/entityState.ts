@@ -36,49 +36,78 @@ export type EntityStates = Record<EntityId, EntityCardState>;
  * or the lifecycle has moved past neutralisation (phase containment/completed).
  */
 export function deriveEntityStates(state: AppState): EntityStates {
-  const attackActive = state.topology.attackActive;
   const phase = state.simulation.phase;
+  const attackActive = state.topology.attackActive;
   const honey = state.honeypot.status;
-  // Lifecycle stages where the attack has already been neutralised.
-  const neutralised = phase === "containment" || phase === "completed";
 
-  // ── Red Team ─────────────────────────────────────────────────────────────
-  let red: EntityCardState = { tone: "neutral", label: "READY / IDLE" };
-  if (attackActive) {
-    red = { tone: "attacking", label: "ATTACKING" };
-  } else if (neutralised) {
-    red = { tone: "blocked", label: "BLOCKED / STOPPED" };
+  const idle = (label: string): EntityCardState => ({ tone: "neutral", label });
+
+  // Authoritative lifecycle: at any moment only ONE entity is "doing work".
+  // Everything else is calm — NO active colour / glow just from existing.
+  let red: EntityCardState = idle("READY / IDLE");
+  let blue: EntityCardState = idle("SECURE / READY");
+  let honeypot: EntityCardState = idle("STANDBY / READY");
+
+  switch (phase) {
+    // STATE 2 — Red Team attacking. Red is the ONLY active entity.
+    case "attack":
+      red = { tone: "attacking", label: "ATTACKING" };
+      break;
+
+    // STATE 3 — Blue Team detection/response. Red stands down.
+    case "detection":
+      red = idle("DISENGAGED");
+      blue = { tone: "underattack", label: "UNDER ATTACK / DEFENDING" };
+      break;
+
+    // STATE 4 — Honeypot deception. Blue is done, honeypot takes over.
+    case "honeypot":
+      blue = idle("SECURE / WAITING");
+      honeypot = { tone: "capturing", label: "DECEIVING / CAPTURING" };
+      break;
+
+    // Honeypot captured the attacker session.
+    case "capture":
+      blue = idle("SECURE / WAITING");
+      honeypot = { tone: "captured", label: "SESSION CAPTURED" };
+      break;
+
+    // Containment — everything returns to calm as the environment is secured.
+    case "containment":
+      red = { tone: "blocked", label: "BLOCKED / STOPPED" };
+      blue = { tone: "secured", label: "SECURED / RESOLVED" };
+      honeypot = idle("SECURED / STANDBY");
+      break;
+
+    // STATE 5 — SAFE. All three entities are back to their calm, idle look.
+    case "completed":
+    default:
+      // ready (idle) / completed / unknown.
+      // Backend fallback: if a REAL attack arrives outside a declared phase,
+      // reflect it so genuine WebSocket/API events still light up the cards
+      // without inventing a fake lifecycle.
+      if (attackActive) {
+        red = { tone: "attacking", label: "ATTACKING" };
+        blue = { tone: "underattack", label: "UNDER ATTACK" };
+        if (honey === "captured" || honey === "active") {
+          honeypot = { tone: "captured", label: "HONEYPOT ENGAGED" };
+        }
+      }
+      break;
   }
 
-  // ── Blue Team ────────────────────────────────────────────────────────────
-  let blue: EntityCardState = { tone: "neutral", label: "SECURE / READY" };
-  if (attackActive) {
-    blue =
-      phase === "attack"
-        ? { tone: "underattack", label: "UNDER ATTACK" }
-        : { tone: "defending", label: "DEFENDING" };
-  } else if (neutralised) {
-    blue = { tone: "secured", label: "SECURED" };
-  }
-
-  // ── Honeypot ─────────────────────────────────────────────────────────────
-  let honeypot: EntityCardState = { tone: "neutral", label: "STANDBY / READY" };
-  if (honey === "arming" || honey === "initializing") {
-    honeypot = { tone: "arming", label: "ARMING" };
-  } else if (honey === "armed") {
-    honeypot = { tone: "armed", label: "ARMED" };
-  } else if (honey === "captured") {
-    honeypot = { tone: "captured", label: "CAPTURED" };
-  } else if (honey === "active") {
-    // "Capturing" only makes sense while an attack is actually live.
-    honeypot = attackActive
-      ? { tone: "capturing", label: phase === "attack" ? "CAPTURING" : "DECEIVING" }
-      : { tone: "neutral", label: "STANDBY / READY" };
-  } else {
-    // waiting / offline
-    honeypot = neutralised
-      ? { tone: "monitoring", label: "STANDBY / MONITORING" }
-      : { tone: "neutral", label: "STANDBY / READY" };
+  // Backend honeypot statuses (arming / armed / offline) still surface when
+  // the provider reports them directly and no lifecycle phase is portraying
+  // the honeypot already. Keeps real events compatible while remaining calm
+  // on an idle dashboard (honeypot.status = "waiting" -> nothing happens).
+  if (honeypot.tone === "neutral") {
+    if (honey === "armed") {
+      honeypot = { tone: "armed", label: "ARMED" };
+    } else if (honey === "arming" || honey === "initializing") {
+      honeypot = { tone: "arming", label: "ARMING" };
+    } else if (honey === "offline") {
+      honeypot = idle("OFFLINE");
+    }
   }
 
   return { red_team: red, blue_team: blue, honeypot };
