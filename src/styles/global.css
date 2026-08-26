@@ -154,6 +154,26 @@ a:focus-visible,
   letter-spacing: 0.02em;
   color: var(--text-secondary);
   text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Topology title: inline network icon (triangle/hexagon node) */
+.panel-header--topology .panel-title__text {
+  display: inline-block;
+}
+
+.panel-title .title-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--text-secondary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--text-secondary);
 }
 
 .panel-body {

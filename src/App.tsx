@@ -54,8 +54,15 @@ function App() {
 
         <section className="dashboard-grid">
           <div className="panel left-col">
-            <div className="panel-header">
-              <span className="panel-title">Cyber Defense Topology</span>
+            <div className="panel-header panel-header--topology">
+              <span className="panel-title">
+                <svg className="title-icon" viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+                  <path d="M12 2L2 7v10c0 4.4 6 7 10 7s10-2.6 10-7V7l-10-5z" />
+                  <path d="M12 7v5" />
+                  <circle cx="12" cy="15" r="2" fill="currentColor" />
+                </svg>
+                <span className="panel-title__text">Cyber Defense Topology</span>
+              </span>
             </div>
             <NetworkTopology />
           </div>
