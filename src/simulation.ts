@@ -190,17 +190,20 @@ class MockProvider implements DataProvider {
     // Phase 4 — Capture
     this.simTimeout(() => {
       this.setPhase("capture");
+      // One session id shared by the event feed AND the fingerprint card so
+      // both always show the same captured session.
+      const sessionId = `SES-${Math.floor(1000 + Math.random() * 9000)}`;
       this.emit(event("honeypot_session_captured", "critical", {
         source: RED_IP,
         target: HONEYPOT_IP,
-        sessionId: `SES-${Math.floor(1000 + Math.random() * 9000)}`,
+        sessionId,
         attackType: "Credential brute-force",
         message: "Attacker session captured by honeypot — redirecting into deception environment",
       }));
       store.setHoneypotStatus("captured");
       store.setFingerprint({
         sourceIp: RED_IP,
-        sessionId: `SES-${Math.floor(1000 + Math.random() * 9000)}`,
+        sessionId,
         detectionTime: now(),
         attackType: "Credential brute-force",
         severity: "HIGH",

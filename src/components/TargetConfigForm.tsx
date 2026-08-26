@@ -95,6 +95,10 @@ export function TargetConfigForm({
     };
 
     if (formMode === "demo") {
+      // Activate the simulated target in the store (status → demo_connected)
+      // before closing the form, otherwise the status card keeps saying
+      // "Offline" even though the user just connected.
+      store.connectTarget();
       onConnect();
       setConnecting(false);
       return;

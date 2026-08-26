@@ -2,3 +2,5 @@ fastapi
 uvicorn
 aiohttp
 paramiko
+aiosqlite
+prometheus-client
