@@ -36,10 +36,12 @@ export function Header() {
 
   return (
     <header className="app-header">
-      <div className="header-brand">
-        <span className="brand-mark" aria-hidden="true">
-          ◈
-        </span>
+            <div className="header-brand">
+        <img
+          src="/logo.png"
+          alt=""
+          className="brand-logo"
+        />
         <span className="brand-name">Shadow-Weaver</span>
         <span className="brand-sub">Suite</span>
       </div>

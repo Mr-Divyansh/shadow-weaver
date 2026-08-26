@@ -19,10 +19,14 @@
   flex-shrink: 0;
 }
 
-.brand-mark {
-  color: var(--accent-primary);
-  font-size: 18px;
-  text-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+.brand-logo {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+  /* Subtle accent glow to integrate the logo with the cyberpunk SOC palette,
+     mirroring the original brand-mark treatment. Honors prefers-reduced-motion. */
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.3));
 }
 
 .brand-name {

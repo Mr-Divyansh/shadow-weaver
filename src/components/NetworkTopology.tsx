@@ -98,6 +98,7 @@ export function NetworkTopology() {
   const edgeHoneyActive = phase === "honeypot" || phase === "capture";
   const edgeRedHoneyActive = phase === "honeypot" || phase === "capture";
 
+  
   return (
     <div
       className="topology-wrap"
