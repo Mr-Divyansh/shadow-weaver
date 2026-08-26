@@ -6,7 +6,7 @@
 
 A cyberpunk SOC simulation with a live red-vs-blue battle on your laptop. A red-team swarm attacks a simulated enterprise; a blue-team shield detects and contains the threat (autonomously or with human approval); an AI honeypot traps the attacker and captures every keystroke; an orchestrator wires it all into a live WebSocket feed that a dashboard renders in real time.
 
-![Architecture](docs/architecture.png)
+![Architecture](assets/Real-Time Cyber Defense.png)
 
 ## Features
 
