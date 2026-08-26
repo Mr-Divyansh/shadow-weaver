@@ -44,9 +44,10 @@ export function deriveEntityStates(state: AppState): EntityStates {
 
   // Authoritative lifecycle: at any moment only ONE entity is "doing work".
   // Everything else is calm — NO active colour / glow just from existing.
-  let red: EntityCardState = idle("DISENGAGED");
-  let blue: EntityCardState = idle("STANDBY / READY");
-  let honeypot: EntityCardState = idle("STANDBY / READY");
+  // Labels are intentionally SHORT so they always fit inside the node cards.
+  let red: EntityCardState = idle("IDLE");
+  let blue: EntityCardState = idle("READY");
+  let honeypot: EntityCardState = idle("READY");
 
   switch (phase) {
     // STATE 2 — Red Team attacking. Red is the ONLY active entity.
@@ -56,27 +57,25 @@ export function deriveEntityStates(state: AppState): EntityStates {
 
     // STATE 3 — Blue Team detection/response. Red stands down.
     case "detection":
-      red = idle("DISENGAGED");
-      blue = { tone: "underattack", label: "UNDER ATTACK / DEFENDING" };
+      blue = { tone: "underattack", label: "DEFENDING" };
       break;
 
     // STATE 4 — Honeypot deception. Blue is done, honeypot takes over.
     case "honeypot":
-      blue = idle("SECURE / WAITING");
-      honeypot = { tone: "capturing", label: "CAPTURING / PROTECTING" };
+      blue = idle("SECURE");
+      honeypot = { tone: "capturing", label: "PROTECTING" };
       break;
 
     // Honeypot captured the attacker session.
     case "capture":
-      blue = idle("SECURE / WAITING");
-      honeypot = { tone: "captured", label: "SESSION CAPTURED" };
+      blue = idle("SECURE");
+      honeypot = { tone: "captured", label: "CAPTURED" };
       break;
 
     // Containment — everything returns to calm as the environment is secured.
     case "containment":
-      red = { tone: "blocked", label: "BLOCKED / STOPPED" };
-      blue = { tone: "secured", label: "SECURED / RESOLVED" };
-      honeypot = idle("SECURED / STANDBY");
+      red = { tone: "blocked", label: "BLOCKED" };
+      blue = { tone: "secured", label: "SECURED" };
       break;
 
     // STATE 5 — SAFE. All three entities are back to their calm, idle look.
@@ -88,9 +87,9 @@ export function deriveEntityStates(state: AppState): EntityStates {
       // without inventing a fake lifecycle.
       if (attackActive) {
         red = { tone: "attacking", label: "ATTACKING" };
-        blue = { tone: "underattack", label: "UNDER ATTACK" };
+        blue = { tone: "underattack", label: "DEFENDING" };
         if (honey === "captured" || honey === "active") {
-          honeypot = { tone: "captured", label: "HONEYPOT ENGAGED" };
+          honeypot = { tone: "captured", label: "CAPTURED" };
         }
       }
       break;
