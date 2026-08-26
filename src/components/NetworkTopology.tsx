@@ -5,29 +5,35 @@ import type { EntityId } from "../types";
 
 import "./NetworkTopology.css";
 
-// Vertical topology:
-//   RED TEAM   (top)
-//      │  ▼
-//   BLUE TEAM  (middle)
-//      │  ▼
-//   HONEYPOT  (bottom)
-// Straight single connectors — no diagonal/crossing lines, so marker arrowheads
-// can never overlap another node or escape the panel.
+// Triangle topology:
+//      ┌──────────┐
+//      │ RED TEAM │   (top-center)
+//      └────┬─────┘
+//         ↙     ↘
+//      ┌──┴──┐  ┌─────┐
+//      │BLUE │  │HONEY│  (bottom row: Blue left, Honeypot right)
+//      └─────┘  └─────┘
+// Three edges: Red→Blue, Red→Honey (deception), Blue→Honey (containment handoff).
+// All connectors are simple straight lines with arrowheads kept away from node
+// text areas so markers never overlap labels.
 
 const NODE_W = 200;
 const NODE_H = 64;
-const GAP = 56;
-const X0 = 40;
+const NODE_R = 8; // rounded-rect radius
+
+// Triangle layout: Red at top-center, Blue + Honeypot on bottom row.
 const TOP = 20;
+const COL_L = 20;                 // left column  (Blue)
+const COL_R = 260;                // right column (Honeypot)
+const ROW_TOP = TOP;              // y of Red
+const ROW_BOTTOM = TOP + NODE_H + 48; // y of bottom row
 
-const CX = X0 + NODE_W / 2;
+const RED = { x: 130, y: ROW_TOP };
+const BLUE = { x: COL_L, y: ROW_BOTTOM };
+const HONEY = { x: COL_R, y: ROW_BOTTOM };
 
-const RED = { x: X0, y: TOP };
-const BLUE = { x: X0, y: TOP + NODE_H + GAP };
-const HONEY = { x: X0, y: TOP + (NODE_H + GAP) * 2 };
-
-const SVG_W = X0 + NODE_W + 40;
-const SVG_H = TOP + (NODE_H + GAP) * 2 + NODE_H + 20;
+const SVG_W = 480;
+const SVG_H = ROW_BOTTOM + NODE_H + 32;
 
 // Tones that keep the small status indicator dot animated on the node.
 const LIVE_TONES = new Set<string>([
@@ -66,7 +72,7 @@ function subClass(tone: string, label: string): string {
 function renderNode(kind: EntityId, pos: { x: number; y: number }, tone: string, label: string) {
   return (
     <g key={kind} transform={`translate(${pos.x}, ${pos.y})`}>
-      <rect className={nodeClass(kind, tone)} width={NODE_W} height={NODE_H} rx="8" />
+      <rect className={nodeClass(kind, tone)} width={NODE_W} height={NODE_H} rx={NODE_R} />
       <circle className={dotClass(tone)} cx={NODE_W - 16} cy={16} r={4} />
       <text className="topo-node-title" x={NODE_W / 2} y={28} textAnchor="middle">
         {ENTITY_LABELS[kind]}
@@ -85,10 +91,12 @@ export function NetworkTopology() {
 
   // Connection activity is state-driven:
   //   RED → BLUE      flows while the Red Team attack is in progress
-  //   BLUE → HONEYPOT flows while the honeypot is protecting / capturing
+  //   RED → HONEY     deception path (active during honeypot phase)
+  //   BLUE → HONEY    flows while the honeypot is protecting / capturing
   // On idle every connector is a dim static line (no moving arrows).
   const edgeRedActive = phase === "attack";
   const edgeHoneyActive = phase === "honeypot" || phase === "capture";
+  const edgeRedHoneyActive = phase === "honeypot" || phase === "capture";
 
   return (
     <div
@@ -101,9 +109,6 @@ export function NetworkTopology() {
           <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
           </marker>
-          <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
-          </marker>
           <marker id="arrow-honey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#a78bfa" />
           </marker>
@@ -112,26 +117,39 @@ export function NetworkTopology() {
           </marker>
         </defs>
 
-        {/* Edge: Red Team → Blue Team */}
+        {/* Edge: Red Team → Blue Team (attack path) */}
         <g className={`topo-edge-wrap${edgeRedActive ? " attack" : ""}`}>
           <line
             className="topo-edge"
-            x1={CX}
+            x1={RED.x + NODE_W / 2}
             y1={RED.y + NODE_H}
-            x2={CX}
+            x2={BLUE.x + NODE_W / 2}
             y2={BLUE.y}
             markerEnd={edgeRedActive ? "url(#arrow-red)" : "url(#arrow-default)"}
             style={{ stroke: edgeRedActive ? "#ef4444" : "#64748b" }}
           />
         </g>
 
-        {/* Edge: Blue Team → Honeypot */}
+        {/* Edge: Red Team → Honeypot (deception path) */}
+        <g className={`topo-edge-wrap${edgeRedHoneyActive ? " attack" : ""}`}>
+          <line
+            className="topo-edge"
+            x1={RED.x + NODE_W / 2}
+            y1={RED.y + NODE_H}
+            x2={HONEY.x + NODE_W / 2}
+            y2={HONEY.y}
+            markerEnd={edgeRedHoneyActive ? "url(#arrow-honey)" : "url(#arrow-default)"}
+            style={{ stroke: edgeRedHoneyActive ? "#a78bfa" : "#64748b" }}
+          />
+        </g>
+
+        {/* Edge: Blue Team → Honeypot (containment handoff) */}
         <g className={`topo-edge-wrap${edgeHoneyActive ? " attack" : ""}`}>
           <line
             className="topo-edge"
-            x1={CX}
+            x1={BLUE.x + NODE_W / 2}
             y1={BLUE.y + NODE_H}
-            x2={CX}
+            x2={HONEY.x + NODE_W / 2}
             y2={HONEY.y}
             markerEnd={edgeHoneyActive ? "url(#arrow-honey)" : "url(#arrow-default)"}
             style={{ stroke: edgeHoneyActive ? "#a78bfa" : "#64748b" }}
