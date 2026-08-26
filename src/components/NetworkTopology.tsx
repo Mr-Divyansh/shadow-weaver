@@ -147,10 +147,10 @@ export function NetworkTopology() {
         <g className={`topo-edge-wrap${edgeHoneyActive ? " attack" : ""}`}>
           <line
             className="topo-edge"
-            x1={BLUE.x + NODE_W / 2}
-            y1={BLUE.y + NODE_H}
-            x2={HONEY.x + NODE_W / 2}
-            y2={HONEY.y}
+            x1={BLUE.x + NODE_W}
+            y1={BLUE.y + NODE_H / 2}
+            x2={HONEY.x}
+            y2={HONEY.y + NODE_H / 2}
             markerEnd={edgeHoneyActive ? "url(#arrow-honey)" : "url(#arrow-default)"}
             style={{ stroke: edgeHoneyActive ? "#a78bfa" : "#64748b" }}
           />
