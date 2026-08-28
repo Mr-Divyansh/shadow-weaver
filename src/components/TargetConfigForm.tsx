@@ -1,8 +1,58 @@
 import { useState } from "react";
 import { store } from "../store";
-import { TargetMode, TargetEnvironment, TargetAuthorizedConfig, TargetDemoConfig } from "../types";
+import {
+  TargetMode,
+  TargetEnvironment,
+  TargetAuthorizedConfig,
+  TargetDemoConfig,
+  TargetStatus,
+} from "../types";
 import { connectToTarget } from "../services/targetConnectionService";
+import { EnvironmentSelect, EnvironmentOption } from "./EnvironmentSelect";
 import "./SettingsPanel.css";
+
+/**
+ * Environment catalogue for the "Authorized Lab Server" target form.
+ * Only Local Lab is selectable today — the rest are explicitly unavailable
+ * so judge eyes immediately read which environments are live vs. locked.
+ */
+const ENVIRONMENT_OPTIONS: EnvironmentOption[] = [
+  { value: "local_lab", label: "Local Lab" },
+  { value: "private_network", label: "Private Network", hint: "Not available", disabled: true },
+  { value: "cloud_lab", label: "Cloud Lab", hint: "Coming soon", disabled: true },
+  { value: "ctf_lab", label: "CTF Lab", hint: "Coming soon", disabled: true },
+];
+
+const DEMO_ENVIRONMENT_OPTIONS: EnvironmentOption[] = [
+  { value: "demo", label: "Simulated Lab", hint: "DEMO" },
+];
+
+const STATUS_LABEL: Record<string, string> = {
+  connected: "CONNECTED",
+  demo_connected: "DEMO MODE",
+  connecting: "CONNECTING…",
+  failed: "CONNECTION FAILED",
+  disconnected: "DISCONNECTED",
+};
+
+const STATUS_DOT_CLASS: Record<string, string> = {
+  connected: "connected",
+  demo_connected: "demo",
+  connecting: "connecting",
+  failed: "failed",
+  disconnected: "disconnected",
+};
+
+function resolveEnvironment(
+  raw: TargetEnvironment | undefined,
+  fallback: TargetEnvironment,
+): TargetEnvironment {
+  if (!raw || raw === "demo") return raw ?? "demo";
+  // A saved/unavailable environment is never pre-selected; Local Lab is.
+  return ENVIRONMENT_OPTIONS.find((o) => o.value === raw && !o.disabled)
+    ? raw
+    : fallback;
+}
 
 function isValidIP(ip: string): boolean {
   const parts = ip.split(".");
@@ -20,7 +70,9 @@ interface TargetConfigFormProps {
   demoConfig: TargetDemoConfig | null;
   authorizedConfig: TargetAuthorizedConfig | null;
   onModeChange: (newMode: TargetMode) => void;
-  onConnect: () => void;
+    onConnect: () => void;
+  /** Existing connection state, used to render a truthful status strip. */
+  connectionState?: TargetStatus;
   /** Shown as a "Cancel" button when editing an already-configured server. */
   onCancel?: () => void;
 }
@@ -31,15 +83,20 @@ export function TargetConfigForm({
   demoConfig,
   authorizedConfig,
   onModeChange,
-  onConnect,
+    onConnect,
   onCancel,
+  connectionState,
 }: TargetConfigFormProps) {
   const [formMode, setFormMode] = useState(mode);
   const [host, setHost] = useState(authorized?.host || demoConfig?.targetIP || "192.0.2.10");
   const [port, setPort] = useState(authorized?.port || demoConfig?.port || 8080);
   const [serverName, setServerName] = useState(authorizedConfig?.serverName || "");
-  const [environment, setEnvironment] = useState<TargetEnvironment>(
-    authorized?.environment || (mode === "demo" ? demoConfig?.environment ?? "demo" : "private_network")
+    const [environment, setEnvironment] = useState<TargetEnvironment>(
+    resolveEnvironment(
+      authorized?.environment ||
+        (mode === "demo" ? demoConfig?.environment ?? "demo" : undefined),
+      "local_lab",
+    ),
   );
   const [authChecked, setAuthChecked] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -72,9 +129,12 @@ export function TargetConfigForm({
     setError(isNaN(value) || value <= 0 || value > 65535 ? "Please enter a valid port number (1-65535)" : null);
   };
 
-  const handleEnvironmentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setEnvironment(e.target.value as TargetEnvironment);
+    const handleEnvironmentChange = (next: string) => {
+    setEnvironment(next as TargetEnvironment);
   };
+
+  const connStatus = connectionState?.status ?? "disconnected";
+  const isConnected = connStatus === "connected" || connStatus === "demo_connected";
 
   const handleAuthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setAuthChecked(e.target.checked);
@@ -146,6 +206,14 @@ export function TargetConfigForm({
         </button>
       </div>
 
+            <div className="env-status-row" role="status" aria-live="polite">
+        <span
+          className={`env-status-dot env-status-dot--${STATUS_DOT_CLASS[connStatus]}`}
+          aria-hidden="true"
+        />
+        <span className="env-status-label">{STATUS_LABEL[connStatus]}</span>
+      </div>
+
       {/* Demo Mode Panel */}
       {formMode === "demo" && (
         <div className="settings-form-panel">
@@ -181,21 +249,30 @@ export function TargetConfigForm({
             <span className="form-hint">SIMULATED</span>
           </div>
 
-          <div className="form-group">
-            <label>Environment</label>
-            <select defaultValue={demoConfig?.environment || "demo"}>
-              <option value="demo">Simulated Lab</option>
-            </select>
+                    <div className="form-group">
+            <EnvironmentSelect
+              id="demo-environment"
+              label="ENVIRONMENT"
+              value={environment}
+              options={DEMO_ENVIRONMENT_OPTIONS}
+              onChange={handleEnvironmentChange}
+              disabled={connecting}
+            />
           </div>
 
-          <div className="form-actions">
+                    <div className="form-actions target-actions">
             <button
               type="button"
-              className={`btn ${connecting ? "btn-secondary" : "btn-primary"} ${connecting ? "disabled" : ""}`}
+              className={`btn ${connecting && !isConnected ? "btn-secondary" : isConnected ? "btn-connected" : "btn-primary"} ${connecting ? "disabled" : ""}`}
               onClick={handleConnect}
               disabled={connecting}
             >
-              {connecting ? "Connecting..." : "CONNECT"}
+              {connecting && !isConnected ? (
+                <>
+                  <span className="btn-spinner" aria-hidden="true" />
+                  CONNECTING…
+                </>
+              ) : isConnected ? "CONNECTED ✓" : "CONNECT"}
             </button>
             <button
               type="button"
@@ -235,14 +312,15 @@ export function TargetConfigForm({
             {error && <span className="form-error">{error}</span>}
           </div>
 
-          <div className="form-group">
-            <label>Environment</label>
-            <select value={environment} onChange={handleEnvironmentChange}>
-              <option value="local_lab">Local Lab</option>
-              <option value="private_network">Private Network</option>
-              <option value="cloud_lab">Cloud Lab</option>
-              <option value="ctf_lab">CTF Lab</option>
-            </select>
+                    <div className="form-group">
+            <EnvironmentSelect
+              id="target-environment"
+              label="ENVIRONMENT"
+              value={environment}
+              options={ENVIRONMENT_OPTIONS}
+              onChange={handleEnvironmentChange}
+              disabled={connecting}
+            />
           </div>
 
           <div className="form-group">
@@ -275,14 +353,19 @@ export function TargetConfigForm({
             </div>
           )}
 
-          <div className="form-actions">
+                    <div className="form-actions target-actions">
             <button
               type="button"
-              className={`btn ${connecting ? "btn-secondary" : "btn-primary"} ${connecting || !canConnect ? "disabled" : ""}`}
+              className={`btn ${connecting && !isConnected ? "btn-secondary" : isConnected ? "btn-connected" : "btn-primary"} ${connecting || !canConnect ? "disabled" : ""}`}
               onClick={handleConnect}
               disabled={connecting || !canConnect}
             >
-              {connecting ? "Connecting..." : "CONNECT"}
+              {connecting && !isConnected ? (
+                <>
+                  <span className="btn-spinner" aria-hidden="true" />
+                  CONNECTING…
+                </>
+              ) : isConnected ? "CONNECTED ✓" : "CONNECT"}
             </button>
             {onCancel ? (
               <button type="button" className="btn btn-ghost" onClick={onCancel}>

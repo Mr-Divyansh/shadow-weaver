@@ -218,7 +218,8 @@ export function SettingsPanel() {
                     authorizedConfig={config.authorized}
                     onModeChange={(newMode) => store.setTargetConfig({ ...config, mode: newMode })}
                     onConnect={() => setEditingTarget(false)}
-                    onCancel={hasSavedServer ? () => setEditingTarget(false) : undefined}
+                                        onCancel={hasSavedServer ? () => setEditingTarget(false) : undefined}
+                    connectionState={status}
                   />
                 )}
 
