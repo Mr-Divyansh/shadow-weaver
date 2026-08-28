@@ -4,3 +4,10 @@ dist
 vite.config.js
 vite.config.d.ts
 *.tsbuildinfo
+*.tsbuildinfo
+
+# Python bytecode / runtime artifacts (event store DB, service logs)
+__pycache__/
+data/
+logs/
+

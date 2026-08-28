@@ -1,7 +1,0 @@
-{"ts": "2026-08-28T16:31:12.148507+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Started server process [14548]", "color_message": "Started server process [\u001b[36m%d\u001b[0m]"}
-{"ts": "2026-08-28T16:31:12.151127+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Waiting for application startup."}
-{"ts": "2026-08-28T16:31:12.246339+00:00", "level": "INFO", "logger": "shadow.orchestrator", "msg": "DB pool initialized pool_size=10"}
-{"ts": "2026-08-28T16:31:12.250048+00:00", "level": "INFO", "logger": "shadow.orchestrator", "msg": "Orchestrator started port=8000"}
-{"ts": "2026-08-28T16:31:12.252296+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Application startup complete."}
-{"ts": "2026-08-28T16:31:12.254182+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)", "color_message": "Uvicorn running on \u001b[1m%s://%s:%d\u001b[0m (Press CTRL+C to quit)"}
-{"ts": "2026-08-28T16:31:16.854022+00:00", "level": "INFO", "logger": "uvicorn.access", "msg": "127.0.0.1:53373 - \"POST /api/v1/ai/demo HTTP/1.1\" 404"}
