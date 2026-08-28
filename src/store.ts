@@ -320,6 +320,9 @@ class Store {
 
   resetAI() {
     this.demoAIRunId++;
+    // A fresh episode starts clean: allow the local demo fallback lifecycle to
+    // drive the panel again if the backend is (or becomes) unreachable.
+    this.aiEventsSeen = false;
     this.setState({ ai: createInitialAIState() });
   }
 
@@ -359,6 +362,9 @@ class Store {
         this.updateAI({
           status: "online",
           phase: "decided",
+          // Engine lives at the record's top level, NOT inside the analysis
+          // payload (which is the validated 8-field contract). Reading it from
+          // the right place keeps the GEMINI label truthful.
           analysis: {
             threatType: String(a.threat_type),
             severity: toSeverity(a.severity),
@@ -367,8 +373,9 @@ class Store {
             indicators: Array.isArray(a.indicators) ? a.indicators.map(String).slice(0, 5) : [],
             reasoning: String(a.reasoning ?? ""),
             recommendedAction: String(a.recommended_action ?? "MONITOR") as AIAction,
-            engine: a.engine === "gemini" ? "gemini" : "deterministic",
+            engine: d.engine === "gemini" ? "gemini" : "deterministic",
           },
+          responseMs: typeof d.duration_ms === "number" ? d.duration_ms : undefined,
         });
         this.appendEvent({
           type: "ai_analysis_completed",
@@ -387,6 +394,7 @@ class Store {
           action,
           phase: action === "MONITOR" ? "decided" : "responding",
           verification: action === "MONITOR" ? "MONITORING" : null,
+          policyNotes: Array.isArray(d.policy_notes) ? d.policy_notes.map(String) : undefined,
         });
         this.appendEvent({
           type: "ai_decision_made",
@@ -417,10 +425,23 @@ class Store {
           phase: done ? "contained" : "verifying",
           verification: done ? "CONTAINED" : null,
         });
+        const summary =
+          result === "MONITOR_ONLY"
+            ? "No active defense required — tracking source under observation"
+            : `${String(d.action ?? "Defense")} ${result ? "executed" : "completed"} — ${String(d.action ?? "")} decision applied`;
         this.appendEvent({
           type: "defense_action_completed", severity: "success",
           source: String(d.source_ip ?? "soc"), timestamp: stamp,
-          message: `${String(d.action ?? "Defense")} ${result.toLowerCase()} — ${String(d.detail ?? "action completed")}`,
+          message: summary,
+        });
+        break;
+      }
+      case "ai.verification.started": {
+        this.updateAI({ status: "online", phase: "verifying" });
+        this.appendEvent({
+          type: "ai_verification_started", severity: "info",
+          source: String(d.source_ip ?? "soc"), timestamp: stamp,
+          message: "AI verification started — monitoring the post-action telemetry window",
         });
         break;
       }
@@ -643,6 +664,7 @@ class Store {
   async initializeDemoMode() {
     // Start from a clean slate so a re-run never stacks on old state.
     this.resetSimulation();
+    this.resetAI();
     const runId = ++this.demoRunId;
     const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const cancelled = () => this.demoRunId !== runId;

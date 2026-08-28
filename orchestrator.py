@@ -284,10 +284,13 @@ async def _ai_pipeline_inner(etype: str, data: dict, ip: str):
                  {"event_id": event_id, "trigger": etype, "ip": ip,
                   "pattern": pattern})
 
+    t0 = time.time()
     analysis = await ai_analyst.analyze(tel)  # never raises; falls back itself
+    duration_ms = round((time.time() - t0) * 1000)
     await record("ai.analysis.completed", "ai.analyst", {
         "event_id": event_id, "ip": ip, "pattern": pattern,
         "engine": analysis.get("engine", "unknown"),
+        "duration_ms": duration_ms,
         "analysis": {k: analysis.get(k) for k in
                      ("threat_type", "severity", "confidence", "risk_score",
                       "indicators", "reasoning", "recommended_action",
@@ -306,13 +309,18 @@ async def _ai_pipeline_inner(etype: str, data: dict, ip: str):
 
     state["ai_active"][ip] = {"event_id": event_id, "ip": ip,
                               "pattern": pattern,
-                              "threat_type": analysis["threat_type"]}
+                              "threat_type": analysis["threat_type"],
+                              "started_ts": time.time()}
 
     # ── Execute through the EXISTING defense handlers ──────────────────────
     await _execute_defense(decision["action"], ip, analysis, event_id)
 
     # ── Verification over the post-action telemetry window ─────────────────
     if decision["action"] in ("HONEYPOT", "BLOCK", "ISOLATE"):
+        await record("ai.verification.started", "ai.analyst",
+                     {"event_id": event_id, "ip": ip, "action": decision["action"],
+                      "window_seconds": config.AI_VERIFICATION_WINDOW,
+                      "threat_type": analysis["threat_type"]})
         await asyncio.sleep(config.AI_VERIFICATION_WINDOW)
         await _verify_and_record(ip, event_id)
     else:
@@ -352,6 +360,7 @@ async def _execute_defense(action: str, ip: str, analysis: dict, event_id: str):
     """Run the validated AI action through existing backend capabilities.
     The AI never produces commands — these are the only paths it can take."""
     reason = f"AI:{analysis['threat_type']} risk={analysis['risk_score']}"
+    result = "RECORDED_ONLY"
     await record("defense.action.started", "ai.analyst",
                  {"event_id": event_id, "ip": ip, "action": action,
                   "threat_type": analysis["threat_type"], "reason": reason})
@@ -372,6 +381,7 @@ async def _execute_defense(action: str, ip: str, analysis: dict, event_id: str):
                     "/control/block", json_data={"ip": ip, "reason": reason,
                                                  "decision": "ai-analyst"})
                 executed = True
+                result = "BLOCKED"
             except Exception as e:
                 logger.warning(f"Blue Shield block call failed ({e}) — "
                                f"recording orchestrator-side block only")
@@ -387,16 +397,20 @@ async def _execute_defense(action: str, ip: str, analysis: dict, event_id: str):
                          {"ip": ip, "event_id": event_id,
                           "note": "AI handed source to deception environment",
                           "threat_type": analysis["threat_type"]})
+            result = "CAPTIVE"
         else:  # MONITOR
             await record("ai.monitor", "ai.analyst",
                          {"ip": ip, "event_id": event_id,
                           "note": "AI recommends continued observation"})
+            result = "MONITOR_ONLY"
     except Exception as e:
         logger.warning(f"Defense execution error action={action} error={e}")
     finally:
         await record("defense.action.completed", "ai.analyst",
                      {"event_id": event_id, "ip": ip, "action": action,
-                      "threat_type": analysis["threat_type"]})
+                      "threat_type": analysis["threat_type"],
+                      "result": result,
+                      "verification_required": analysis.get("verification_required", False)})
 
 
 async def _verify_and_record(ip: str, event_id: str):
@@ -757,6 +771,25 @@ async def event_pruner():
                     "DELETE FROM events WHERE id <= (SELECT COALESCE(MAX(id),0) - ? FROM events)",
                     (config.EVENT_RETENTION,))
                 await con.commit()
+            # Keep AI pipeline bookkeeping bounded too: dedup/narration keys and
+            # stale active-ops are cleared once far past their lifecycle.
+            now = time.time()
+            staleness = {
+                k: t for k, t in state["ai_seen"].items()
+                if now - t > max(config.AI_DEDUP_WINDOW * 2, 900)
+            }
+            for k in staleness:
+                state["ai_seen"].pop(k, None)
+            stale_narr = [
+                k for k, t in state["ai_narrated"].items()
+                if now - t > max(config.NARRATION_COOLDOWN * 2, 300)
+            ]
+            for k in stale_narr:
+                state["ai_narrated"].pop(k, None)
+            for ip, info in list(state["ai_active"].items()):
+                age = now - float(info.get("started_ts", now))
+                if age > max(config.AI_VERIFICATION_WINDOW * 2, 60):
+                    state["ai_active"].pop(ip, None)
         except Exception:
             pass
 

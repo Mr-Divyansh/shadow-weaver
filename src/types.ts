@@ -91,6 +91,7 @@ export type EventType =
   | "ai_decision_made"
   | "defense_action_started"
   | "defense_action_completed"
+  | "ai_verification_started"
   | "ai_verification_completed"
   // Protected Target (Settings > Add IP & Port)
   | "target_connected"
@@ -201,6 +202,10 @@ export interface AIAnalystState {
   analysis: AIAnalysis | null;
   action: AIAction | null;
   verification: "CONTAINED" | "STILL_ACTIVE" | "UNCERTAIN" | "MONITORING" | null;
+  /** Real AI analysis latency in ms, from ai.analysis.completed. */
+  responseMs?: number;
+  /** Policy-layer notes explaining any decision adjustment (ai.decision.made). */
+  policyNotes?: string[];
   updatedAt: number;
 }
 

@@ -37,7 +37,7 @@
 
 .ai-metrics {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: var(--space-3);
 }
 
@@ -72,6 +72,20 @@
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.55;
+}
+
+.ai-policy-note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.ai-policy-tag {
+  color: var(--status-warning);
+  flex-shrink: 0;
 }
 
 .ai-indicators {

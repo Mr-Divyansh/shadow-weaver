@@ -106,6 +106,12 @@ export function AIDecisionPanel() {
               <span className="ai-metric-value">{a.riskScore}/100</span>
             </div>
             <div className="ai-metric">
+              <span className="metric-label">Response</span>
+              <span className="ai-metric-value">
+                {typeof ai.responseMs === "number" ? `${ai.responseMs} ms` : "—"}
+              </span>
+            </div>
+            <div className="ai-metric">
               <span className="metric-label">Decision</span>
               <span className="ai-metric-value ai-action">{a.recommendedAction}</span>
             </div>
@@ -116,6 +122,13 @@ export function AIDecisionPanel() {
           </div>
 
           <p className="ai-reasoning">{a.reasoning}</p>
+
+          {ai.policyNotes && ai.policyNotes.length > 0 && (
+            <p className="ai-policy-note" role="note">
+              <span className="label-mono ai-policy-tag">Policy</span>
+              <span>{ai.policyNotes[0]}</span>
+            </p>
+          )}
 
           {a.indicators.length > 0 && (
             <div className="ai-indicators" aria-label="Threat indicators">
