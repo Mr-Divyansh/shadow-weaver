@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import platform
+import re
 import shlex
 import subprocess
 import sys
@@ -48,10 +49,64 @@ def _audit(entry: Dict[str, Any]):
         pass
 
 
-def _run_cmd(cmd: List[str], timeout: int = 15) -> Tuple[int, str, str]:
+# ── Firewall execution events (live / simulation truthfulness) ───────────────
+# Registered by the owning process (blue_shield) so firewall command RESULTS
+# are forwarded to the orchestrator event feed after execution. The mode is
+# decided HERE, at the real execution point, from EXECUTOR_DRY_RUN: a command
+# that was only logged is reported as simulation, never as live execution.
+_FIREWALL_NOTIFIERS: List = []
+
+
+def register_firewall_notifier(cb) -> None:
+    """Register a callable receiving {mode, platform, action, target,
+    command, success, dry_run} dicts after each firewall command attempt."""
+    if callable(cb) and cb not in _FIREWALL_NOTIFIERS:
+        _FIREWALL_NOTIFIERS.append(cb)
+
+
+def _sanitize_cmd(cmd_str: str, limit: int = 200) -> str:
+    """Redact obvious secrets/values from a command line and cap its length
+    so nothing sensitive ever leaves the executor."""
+    scrubbed = re.sub(r"(?i)(key|token|secret|password|apikey)(=|\s+)\S+",
+                      r"\1\2[REDACTED]", cmd_str)
+    scrubbed = " ".join(scrubbed.split())
+    if len(scrubbed) > limit:
+        scrubbed = scrubbed[: limit] + "..."
+    return scrubbed
+
+
+def _notify_firewall(action: str, target: str, cmd: str, success: bool,
+                     dry_run: bool) -> None:
+    """Emit one firewall-execution record to every registered notifier.
+
+    mode == "simulation" means the command was NOT executed for real
+    (EXECUTOR_DRY_RUN is true) — it is never mislabeled as live.
+    """
+    if not _FIREWALL_NOTIFIERS:
+        return
+    entry = {
+        "mode": "simulation" if dry_run else "live",
+        "platform": platform.system(),
+        "action": action,
+        "target": str(target),
+        "command": _sanitize_cmd(cmd),
+        "success": bool(success),
+        "dry_run": bool(dry_run),
+    }
+    for cb in list(_FIREWALL_NOTIFIERS):
+        try:
+            cb(entry)
+        except Exception:
+            pass
+
+
+def _run_cmd(cmd: List[str], timeout: int = 15, action: str = "",
+             target: str = "") -> Tuple[int, str, str]:
     """Run a subprocess command. Returns (returncode, stdout, stderr).
 
-    In DRY_RUN mode, logs the command but doesn't execute.
+    In DRY_RUN mode, logs the command but doesn't execute. When `action` and
+    `target` are supplied, a firewall execution result is emitted after the
+    attempt so the dashboard truthfully distinguishes live vs simulated.
     """
     cmd_str = " ".join(cmd)
     dry_run = getattr(config, "EXECUTOR_DRY_RUN", True)
@@ -60,6 +115,8 @@ def _run_cmd(cmd: List[str], timeout: int = 15) -> Tuple[int, str, str]:
         logger.info(f"DRY_RUN: {cmd_str}")
         _audit({"ts": time.time(), "dry_run": True, "cmd": cmd_str,
                 "returncode": 0, "stdout": "(dry run)", "stderr": ""})
+        if action:
+            _notify_firewall(action, target, cmd_str, True, True)
         return 0, "(dry run)", ""
 
     try:
@@ -72,21 +129,30 @@ def _run_cmd(cmd: List[str], timeout: int = 15) -> Tuple[int, str, str]:
                 "stdout": result.stdout[:500], "stderr": result.stderr[:500]})
         if result.returncode != 0:
             logger.warning(f"cmd failed rc={result.returncode}: {cmd_str}\n  stderr: {result.stderr[:200]}")
+        if action:
+            _notify_firewall(action, target, cmd_str,
+                             result.returncode == 0, False)
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
         logger.error(f"cmd timeout ({timeout}s): {cmd_str}")
         _audit({"ts": time.time(), "dry_run": False, "cmd": cmd_str,
                 "returncode": -1, "stdout": "", "stderr": "timeout"})
+        if action:
+            _notify_firewall(action, target, cmd_str, False, False)
         return -1, "", "timeout"
     except FileNotFoundError:
         logger.error(f"cmd not found: {cmd[0]}")
         _audit({"ts": time.time(), "dry_run": False, "cmd": cmd_str,
                 "returncode": -2, "stdout": "", "stderr": "command not found"})
+        if action:
+            _notify_firewall(action, target, cmd_str, False, False)
         return -2, "", "command not found"
     except Exception as e:
         logger.error(f"cmd error: {cmd_str} error={e}")
         _audit({"ts": time.time(), "dry_run": False, "cmd": cmd_str,
                 "returncode": -3, "stdout": "", "stderr": str(e)})
+        if action:
+            _notify_firewall(action, target, cmd_str, False, False)
         return -3, "", str(e)
 
 
@@ -112,7 +178,7 @@ def block_ip(ip: str, reason: str = "", ttl: int = 0) -> bool:
         else:
             cmd = ["iptables", "-A", "INPUT", "-s", ip, "-j", "DROP"]
 
-    rc, stdout, stderr = _run_cmd(cmd)
+    rc, stdout, stderr = _run_cmd(cmd, action="block", target=ip)
     if rc == 0:
         logger.info(f"BLOCKED {ip} reason={reason}")
     return rc == 0
@@ -132,7 +198,7 @@ def unblock_ip(ip: str) -> bool:
         else:
             cmd = ["iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"]
 
-    rc, stdout, stderr = _run_cmd(cmd)
+    rc, stdout, stderr = _run_cmd(cmd, action="unblock", target=ip)
     if rc == 0:
         logger.info(f"UNBLOCKED {ip}")
     return rc == 0
@@ -165,7 +231,7 @@ def throttle_ip(ip: str, port: int = 80, rate: str = "10/min", duration: int = 3
             f"remoteip={ip}", f"protocol=tcp", f"localport={port}",
             "enable=yes"
         ]
-        rc, _, _ = _run_cmd(cmd)
+        rc, _, _ = _run_cmd(cmd, action="throttle", target=ip)
     else:
         # Linux: iptables rate limit
         cmd = [
@@ -182,7 +248,7 @@ def throttle_ip(ip: str, port: int = 80, rate: str = "10/min", duration: int = 3
                 "-p", "tcp", "--dport", str(port),
                 "-j", "DROP"
             ]
-            rc, _, _ = _run_cmd(cmd)
+            rc, _, _ = _run_cmd(cmd, action="throttle", target=ip)
 
     if rc == 0:
         logger.info(f"THROTTLED {ip} port={port} rate={rate} duration={duration}s")
@@ -249,7 +315,7 @@ def tarpit_ip(ip: str, port: int = 22) -> bool:
             "-j", "TARPIT"
         ]
 
-    rc, stdout, stderr = _run_cmd(cmd)
+    rc, stdout, stderr = _run_cmd(cmd, action="tarpit", target=ip)
     if rc == 0:
         logger.info(f"TARPIT {ip} port={port}")
     return rc == 0
@@ -269,14 +335,14 @@ def disable_user(username: str, reason: str = "") -> bool:
         # Linux: lock password + expire account
         cmd_lock = ["usermod", "-L", username]
         cmd_expire = ["chage", "-E", "0", username]
-        rc1, _, _ = _run_cmd(cmd_lock)
-        rc2, _, _ = _run_cmd(cmd_expire)
+        rc1, _, _ = _run_cmd(cmd_lock, action="disable_user", target=username)
+        rc2, _, _ = _run_cmd(cmd_expire, action="disable_user", target=username)
         if rc1 == 0 or rc2 == 0:
             logger.info(f"DISABLED user {username} reason={reason}")
             return True
         return False
 
-    rc, stdout, stderr = _run_cmd(cmd)
+    rc, stdout, stderr = _run_cmd(cmd, action="disable_user", target=username)
     if rc == 0:
         logger.info(f"DISABLED user {username} reason={reason}")
     return rc == 0

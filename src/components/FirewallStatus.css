@@ -1,0 +1,143 @@
+/* Firewall Execution Status panel — truthful live/simulation indicator. */
+
+.firewall-body {
+  height: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.firewall-badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.firewall-badge {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface-raised);
+  color: var(--text-muted);
+}
+
+.firewall-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* Live: green pulse — only ever shown when real OS commands executed. */
+.firewall-body.fw-live .firewall-badge {
+  color: var(--status-success);
+  border-color: rgba(47, 184, 123, 0.5);
+  background: var(--sev-success-bg);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Simulation: amber — a fake/dry-run execution, never mislabeled live. */
+.firewall-body.fw-simulation .firewall-badge {
+  color: var(--status-warning);
+  border-color: rgba(245, 158, 11, 0.5);
+  background: var(--sev-warning-bg);
+}
+
+/* Error: red. */
+.firewall-body.fw-error .firewall-badge {
+  color: var(--status-critical);
+  border-color: rgba(239, 68, 68, 0.5);
+  background: var(--sev-critical-bg);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.firewall-commands {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.firewall-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  color: var(--text-muted);
+}
+
+.fw-cmd {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-raised);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fw-cmd-line1 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fw-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fw-action {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent-primary);
+}
+
+.fw-result {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+}
+
+.fw-ok {
+  color: var(--status-success);
+  background: var(--sev-success-bg);
+}
+
+.fw-fail {
+  color: var(--status-critical);
+  background: var(--sev-critical-bg);
+}
+
+.fw-target {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.fw-command {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

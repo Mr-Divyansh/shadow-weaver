@@ -6,10 +6,14 @@ import type {
   AgentTeam,
   AIAction,
   AIAnalystState,
+  AiReasoningEvent,
   ApprovalRequest,
   ConnectionState,
   EntityHealth,
   EntityId,
+  FirewallCommand,
+  FirewallMode,
+  FirewallStatus,
   HoneypotStatus,
   OperatingMode,
   OverviewMetrics,
@@ -116,6 +120,14 @@ export interface AppState {
   };
   // AI Security Analyst panel state — updated by the live orchestrator event
   // feed (liveFeed.ts) and by Demo Mode's local fallback lifecycle.
+  // Live AI reasoning trail (chronological, provenance-labelled) plus the
+  // firewall execution status surface shown by the Live AI Reasoning and
+  // Firewall Execution Status panels.
+  aiReasoning: AiReasoningEvent[];
+  firewall: {
+    status: FirewallStatus;
+    commands: FirewallCommand[];
+  };
   ai: AIAnalystState;
 }
 
@@ -166,6 +178,8 @@ const initialState: AppState = {
   },
   settings: { open: false, tab: "protected_target" },
   target: buildInitialTargetState(),
+  aiReasoning: [],
+  firewall: { status: "idle", commands: [] },
   ai: createInitialAIState(),
 };
 
@@ -318,6 +332,35 @@ class Store {
     this.setState({ ai: { ...this.state.ai, ...patch, updatedAt: Date.now() } });
   }
 
+  // Appends one provenance-labelled AI reasoning step to the chronological
+  // trail shown by the Live AI Reasoning panel (keep bounded).
+  appendAiReasoning(ev: AiReasoningEvent) {
+    const trail = [...this.state.aiReasoning, ev].slice(-50);
+    this.setState({ aiReasoning: trail });
+  }
+
+  // Records one firewall command result. The badge status is derived
+  // truthfully: live/simulation from the event mode, error on failure.
+  recordFirewallCommand(cmd: {
+    action: string;
+    target: string;
+    command: string;
+    success: boolean;
+    mode: FirewallMode;
+  }) {
+    const command: FirewallCommand = {
+      id: ++this.eventIdCounter,
+      time: new Date().toLocaleTimeString("en-GB", { hour12: false }),
+      ...cmd,
+    };
+    this.setState({
+      firewall: {
+        status: cmd.success ? cmd.mode : "error",
+        commands: [command, ...this.state.firewall.commands].slice(0, 8),
+      },
+    });
+  }
+
   resetAI() {
     this.demoAIRunId++;
     // A fresh episode starts clean: allow the local demo fallback lifecycle to
@@ -333,7 +376,7 @@ class Store {
    */
   applyAIEvent(frame: { type?: string; source?: string; ts?: string; data?: Record<string, unknown> }) {
     const t = String(frame.type ?? "");
-    if (!t.startsWith("ai.") && !t.startsWith("defense.") && t !== "threat.contained") return;
+    if (!t.startsWith("ai.") && !t.startsWith("defense.") && !t.startsWith("firewall.") && !t.startsWith("verification.") && t !== "threat.contained") return;
     this.aiEventsSeen = true;
     const d = frame.data ?? {};
     const stamp = (frame.ts ?? "").slice(11, 19) || new Date().toLocaleTimeString();
@@ -458,6 +501,116 @@ class Store {
           severity: status === "CONTAINED" ? "success" : status === "STILL_ACTIVE" ? "high" : "warning",
           source: String(d.source_ip ?? "soc"), timestamp: stamp,
           message: `AI verification: ${status} — ${String(v.reason ?? "")}`,
+        });
+        if (status === "CONTAINED") {
+          this.appendEvent({
+            type: "verification_completed",
+            severity: "success",
+            source: String(d.source_ip ?? "soc"),
+            timestamp: stamp,
+            message: `INCIDENT #${String(d.event_id ?? "SW")} — threat contained ✓`,
+          });
+        }
+        break;
+      }
+      case "ai.reasoning": {
+        const risk = String(d.risk ?? "MEDIUM");
+        const confidence = Number(d.confidence ?? 0) || 0;
+        const stage = String(d.stage ?? "analysis");
+        const threatId = String(d.threat_id ?? d.event_id ?? "SW-UNKNOWN");
+        const classification = String(d.classification ?? d.threat_type ?? "Unknown");
+        this.appendAiReasoning({
+          type: "ai_reasoning",
+          timestamp: stamp,
+          threatId,
+          classification,
+          confidence,
+          risk,
+          riskScore: Number(d.risk_score ?? 0) || undefined,
+          recommendation: String(d.recommendation ?? "Monitor"),
+          target: String(d.target ?? d.ip ?? ""),
+          reasoning: String(d.reasoning ?? ""),
+          source: d.source === "gemini" ? "gemini" : "simulation",
+          mode: d.mode === "live" ? "live" : "demo",
+          stage,
+          action: d.action ? String(d.action) : undefined,
+        });
+        // Verification stage closes the lifecycle with the final proof step.
+        if (stage === "verification") {
+          this.updateAI({
+            status: "online",
+            phase: "contained",
+            verification: "CONTAINED",
+          });
+          this.appendEvent({
+            type: "verification_completed",
+            severity: "success",
+            source: String(d.ip ?? "soc"),
+            target: String(d.target ?? ""),
+            timestamp: stamp,
+            message: `INCIDENT #${threatId} — verification completed: threat contained ✓`,
+          });
+        } else if (stage === "decision") {
+          const sev = risk === "CRITICAL" || risk === "HIGH" ? "high" : "info";
+          this.appendEvent({
+            type: "ai_reasoning",
+            severity: sev as Severity,
+            source: String(d.ip ?? "soc"),
+            target: String(d.target ?? ""),
+            timestamp: stamp,
+            message: `AI ${stage}: ${classification} → ${String(d.action ?? d.recommendation ?? "")}`,
+          });
+        } else {
+          this.appendEvent({
+            type: "ai_reasoning",
+            severity: risk === "CRITICAL" || risk === "HIGH" ? "high" : "info",
+            source: String(d.ip ?? "soc"),
+            target: String(d.target ?? ""),
+            timestamp: stamp,
+            message: `AI ${stage}: ${classification} — ${String(d.recommendation ?? "")}`,
+          });
+        }
+        break;
+      }
+      case "firewall.executed": {
+        const ok = Boolean(d.success);
+        const mode = d.mode === "live" ? "live" : "simulation";
+        const target = String(d.target ?? d.ip ?? "");
+        this.recordFirewallCommand({
+          action: String(d.action ?? "block"),
+          target,
+          command: String(d.command ?? ""),
+          success: ok,
+          mode,
+        });
+        this.appendEvent({
+          type: "firewall_executed",
+          severity: ok ? (mode === "live" ? "success" : "warning") : "critical",
+          source: String(d.platform ?? "executor"),
+          target,
+          timestamp: stamp,
+          message: ok
+            ? `${mode === "live" ? "LIVE FIREWALL" : "SIMULATION MODE"} — ${String(d.action ?? "block")} of ${target}`
+            : `FIREWALL ERROR — ${String(d.command ?? "command")} failed`,
+        });
+        break;
+      }
+      case "verification.completed": {
+        const vstatus = String(d.status ?? "CONTAINED").toUpperCase();
+        const vVerified = vstatus === "CONTAINED";
+        this.updateAI({
+          status: "online",
+          verification: vVerified ? "CONTAINED" : (this.state.ai.verification ?? null),
+          phase: vVerified ? "contained" : this.state.ai.phase,
+        });
+        this.appendEvent({
+          type: "verification_completed",
+          severity: vVerified ? "success" : "warning",
+          source: String(d.ip ?? "soc"),
+          timestamp: stamp,
+          message: vVerified
+            ? `INCIDENT #${String(d.threat_id ?? "SW")} — THREAT CONTAINED ✓`
+            : `Verification: ${String(d.status ?? "uncertain")}`,
         });
         break;
       }
@@ -710,6 +863,13 @@ class Store {
   }) {
     const { wait, cancelled, stamp, capturedCommands } = ctx;
 
+    // ONE incident identity per lifecycle: every stage below references the
+    // same attacker IP and incident id, so the demo reads as a single
+    // continuous attack/defense story (not disconnected animations).
+    const incidentId = `SW-${Math.floor(1000 + Math.random() * 9000)}`;
+    const attackerIp = "192.168.50.40";
+    const blueTarget = "192.168.50.20:8080";
+
     // Phase 1 — IDLE → ATTACK. Nothing is active before this point: the
     // honeypot stays on standby (no arming glow) so only Red glows now.
     this.setSimulation({ phase: "attack", running: true, stopped: false });
@@ -718,25 +878,60 @@ class Store {
     this.appendEvent({
       type: "attack_started",
       severity: "high",
-      source: "192.168.50.40",
-      target: "192.0.2.10:8080",
+      source: attackerIp,
+      target: blueTarget,
       timestamp: stamp(),
-      message: "Attack started — Red Team engaging the protected target",
+      message: `INCIDENT #${incidentId} — Red Team attack started from ${attackerIp}`,
+    });
+    this.appendEvent({
+      type: "service_discovered",
+      severity: "warning",
+      source: attackerIp,
+      target: blueTarget,
+      timestamp: stamp(),
+      message: "Port scan — open services discovered on protected target (8080 / 22)",
     });
 
-    await wait(2400);
+    await wait(1600);
     if (cancelled()) return;
 
-    // Phase 2 — Threat detected: Blue Team shifts to defending.
+    // ── STEP 2 — Brute Force ─────────────────────────────────────────────
+    this.appendEvent({
+      type: "suspicious_activity",
+      severity: "warning",
+      source: attackerIp,
+      target: blueTarget,
+      timestamp: stamp(),
+      message: "Brute force — credential guesses against protected web login",
+    });
+
+    await wait(1000);
+    if (cancelled()) return;
+
+    // ── STEP 3 — SSH Login Attempt ───────────────────────────────────────
+    this.appendEvent({
+      type: "suspicious_activity",
+      severity: "warning",
+      source: attackerIp,
+      target: blueTarget,
+      timestamp: stamp(),
+      message: "SSH login attempt — repeated authentication failures from same source",
+    });
+
+    await wait(1000);
+    if (cancelled()) return;
+
+    // ── STEP 4 — Threat Detection ────────────────────────────────────────
     this.setSimulation({ phase: "detection" });
     this.setOverview({ threatsDetected: this.state.overview.threatsDetected + 1 });
     this.appendEvent({
       type: "threat_detected",
       severity: "high",
-      source: "192.168.50.40",
-      target: "192.0.2.10:8080",
+      source: attackerIp,
+      target: blueTarget,
+      attackType: "SSH brute force",
       timestamp: stamp(),
-      message: "Suspicious activity detected — Blue Team is responding",
+      message: `Threat detected — brute-force pattern from ${attackerIp} (6 attempts / 10s)`,
     });
 
     // AI Security Analyst — local fallback lifecycle (only when the live
@@ -745,11 +940,28 @@ class Store {
     if (!this.aiEventsSeen) {
       this.updateAI({ phase: "analyzing", status: "offline" });
       this.appendEvent({
-        type: "ai_analysis_started", severity: "info", source: "192.168.50.40",
+        type: "ai_analysis_started", severity: "info", source: attackerIp,
         timestamp: stamp(), message: "AI Security Analyst analyzing telemetry…",
       });
-      await wait(1500);
+      await wait(1200);
       if (cancelled()) return;
+      // ── STEP 5 — AI Analysis (deterministic demo reasoning, explicitly
+      // marked source=simulation / mode=demo — never live Gemini) ────────
+      this.appendAiReasoning({
+        type: "ai_reasoning",
+        timestamp: stamp(),
+        threatId: incidentId,
+        classification: "Brute Force",
+        confidence: 0.92,
+        risk: "HIGH",
+        riskScore: 78,
+        recommendation: "Divert to honeypot",
+        target: attackerIp,
+        reasoning: "Repeated authentication failures from the same source within a short window indicate a likely brute-force attack.",
+        source: "simulation",
+        mode: "demo",
+        stage: "analysis",
+      });
       this.updateAI({
         phase: "decided",
         action: "HONEYPOT",
@@ -770,13 +982,29 @@ class Store {
         },
       });
       this.appendEvent({
-        type: "ai_analysis_completed", severity: "critical", source: "192.168.50.40",
+        type: "ai_analysis_completed", severity: "critical", source: attackerIp,
         timestamp: stamp(),
-        message: "AI classified SSH_BRUTE_FORCE — CRITICAL (confidence 94%)",
+        message: "AI classified SSH_BRUTE_FORCE — HIGH (confidence 92%)",
       });
       this.appendEvent({
-        type: "ai_decision_made", severity: "critical", source: "192.168.50.40",
+        type: "ai_decision_made", severity: "critical", source: attackerIp,
         timestamp: stamp(), message: "AI decision: HONEYPOT — divert attacker into deception environment",
+      });
+      this.appendAiReasoning({
+        type: "ai_reasoning",
+        timestamp: stamp(),
+        threatId: incidentId,
+        classification: "Brute Force",
+        confidence: 0.92,
+        risk: "HIGH",
+        riskScore: 78,
+        recommendation: "HONEYPOT",
+        target: attackerIp,
+        reasoning: "HONEYPOT selected — high-risk brute force is best observed and contained inside the deception environment.",
+        source: "simulation",
+        mode: "demo",
+        stage: "decision",
+        action: "HONEYPOT",
       });
       await wait(500);
       if (cancelled()) return;
@@ -793,6 +1021,7 @@ class Store {
     this.appendEvent({
       type: "honeypot_active",
       severity: "info",
+      source: attackerIp,
       target: "192.168.50.30",
       timestamp: stamp(),
       message: "Honeypot deception environment engaging the attacker",
@@ -800,7 +1029,7 @@ class Store {
     if (!this.aiEventsSeen) {
       this.updateAI({ phase: "responding" });
       this.appendEvent({
-        type: "defense_action_started", severity: "warning", source: "192.168.50.40",
+        type: "defense_action_started", severity: "warning", source: attackerIp,
         timestamp: stamp(), message: "Executing HONEYPOT via blue_shield deception layer…",
       });
     }
@@ -811,7 +1040,7 @@ class Store {
     // Phase 4 — Session captured; stream realistic decoy commands.
     this.setSimulation({ phase: "capture" });
     const sessionId = `SES-${Math.floor(1000 + Math.random() * 9000)}`;
-    const sourceIp = "203.0.113.23";
+    const sourceIp = attackerIp;
     this.setHoneypotStatus("captured");
     this.setFingerprint(
       {
@@ -856,7 +1085,7 @@ class Store {
     await wait(3200);
     if (cancelled()) return;
 
-    // Phase 5 — Containment: the attack is blocked, environment secured.
+    // ── STEP 6 — Honeypot Redirection (campaign continuity) ─────────────
     this.setSimulation({ phase: "containment" });
     this.setTopology({ attackActive: false, attackTarget: null });
     this.setOverview({
@@ -864,33 +1093,85 @@ class Store {
       threatsContained: this.state.overview.threatsContained + 1,
     });
     this.setHoneypotStatus("waiting");
+    // Firewall blocking is SIMULATED here — no OS firewall command is run.
+    // The badge stays in SIMULATION MODE until a real command executes.
+    this.recordFirewallCommand({
+      action: "block",
+      target: attackerIp,
+      command: `simulated iptables -A INPUT -s ${attackerIp} -j DROP`,
+      success: true,
+      mode: "simulation",
+    });
     this.appendEvent({
       type: "containment_in_progress",
       severity: "warning",
       source: "orchestrator",
       timestamp: stamp(),
-      message: "Isolating the attacker and rolling back the session",
+      message: "Containment started — firewall rule staged for attacker source",
+    });
+    this.appendEvent({
+      type: "firewall_executed",
+      severity: "warning",
+      source: "executor (simulation)",
+      target: attackerIp,
+      timestamp: stamp(),
+      message: `SIMULATION MODE — firewall block applied to ${attackerIp} (no live command was executed)`,
+    });
+
+    await wait(1200);
+    if (cancelled()) return;
+
+    // ── STEP 8 — Verification / STEP 9 — Threat Contained ──────────────
+    this.appendEvent({
+      type: "verification_completed",
+      severity: "success",
+      source: "orchestrator",
+      timestamp: stamp(),
+      message: `INCIDENT #${incidentId} — verification: THREAT CONTAINED ✓`,
+    });
+    this.recordFirewallCommand({
+      action: "verify",
+      target: attackerIp,
+      command: "simulated containment verification — no further traffic from source",
+      success: true,
+      mode: "simulation",
     });
     if (!this.aiEventsSeen) {
       this.updateAI({ phase: "verifying" });
       this.appendEvent({
-        type: "defense_action_completed", severity: "success", source: "192.168.50.40",
+        type: "defense_action_completed", severity: "success", source: attackerIp,
         timestamp: stamp(), message: "honeypot captive — attacker isolated in deception environment",
       });
-      await wait(1200);
+      await wait(1000);
       if (cancelled()) return;
       this.updateAI({
         phase: "contained",
         verification: "CONTAINED",
       });
-      this.appendEvent({
-        type: "ai_verification_completed", severity: "success", source: "192.168.50.40",
+      this.appendAiReasoning({
+        type: "ai_reasoning",
         timestamp: stamp(),
-        message: "AI verification: CONTAINED — no further malicious activity from 192.168.50.40 after isolation.",
+        threatId: incidentId,
+        classification: "Brute Force",
+        confidence: 0.97,
+        risk: "HIGH",
+        riskScore: 78,
+        recommendation: "Threat contained",
+        target: attackerIp,
+        reasoning: "No further malicious activity from the attacker after honeypot capture and firewall block — incident closed.",
+        source: "simulation",
+        mode: "demo",
+        stage: "verification",
+        action: "BLOCK",
       });
       this.appendEvent({
-        type: "threat_contained", severity: "success", source: "192.168.50.40",
-        timestamp: stamp(), message: "Threat contained — AI verified the response was effective",
+        type: "ai_verification_completed", severity: "success", source: attackerIp,
+        timestamp: stamp(),
+        message: `AI verification: CONTAINED — no further malicious activity from ${attackerIp} after isolation.`,
+      });
+      this.appendEvent({
+        type: "threat_contained", severity: "success", source: attackerIp,
+        timestamp: stamp(), message: `INCIDENT #${incidentId} — Threat contained, AI verified response was effective`,
       });
     }
 
@@ -939,6 +1220,8 @@ class Store {
       honeypot: { status: "waiting", commands: [], fingerprint: null },
       simulation: { phase: "ready", running: false, stopped: false },
       approval: { pending: null },
+      aiReasoning: [],
+      firewall: { status: "idle", commands: [] },
       ai: createInitialAIState(),
       overview: {
         activeThreats: 0,

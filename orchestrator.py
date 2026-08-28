@@ -236,7 +236,8 @@ async def _maybe_narrate(etype: str, data: dict):
                 "SELECT type,data FROM events ORDER BY id DESC LIMIT 10")).fetchall()
         recent = [{"type": r[0], "data": json.loads(r[1])} for r in rows]
         rec = await asyncio.to_thread(ai_brain.recommend, recent)
-        await record("ai.brief", "ai.brain", {"event": etype, "brief": brief, "recommendation": rec})
+        await record("ai.brief", "ai.brain", {"event": etype, "brief": brief,
+                     "recommendation": rec, "engine": "gemini", "mode": "live"})
         AI_BRIEFS.inc()
     except Exception as e:
         logger.warning(f"AI brief failed error={e}")
@@ -272,6 +273,16 @@ async def _run_ai_pipeline(etype: str, data: dict):
         # deterministic detection/response keeps running regardless.
 
 
+# ── AI reasoning provenance ────────────────────────────────────────────────
+# The AI pipeline never lies about its engine: real Gemini output is labelled
+# source=gemini/mode=live; anything else (deterministic fallback rule engine)
+# is labelled source=simulation/mode=demo so the UI can show DEMO AI.
+def _ai_source(engine: str) -> dict:
+    if engine == "gemini":
+        return {"source": "gemini", "mode": "live"}
+    return {"source": "simulation", "mode": "demo"}
+
+
 async def _ai_pipeline_inner(etype: str, data: dict, ip: str):
     pattern = str(data.get("detect") or etype.replace("shield.", ""))
     prior = sum(1 for (seen_ip, _), t in state["ai_seen"].items() if seen_ip == ip)
@@ -296,6 +307,22 @@ async def _ai_pipeline_inner(etype: str, data: dict, ip: str):
                       "indicators", "reasoning", "recommended_action",
                       "verification_required")}})
 
+    # ── ai_reasoning (analysis stage): human-readable, provenance-honest ────
+    src = _ai_source(analysis.get("engine", "deterministic"))
+    await record("ai.reasoning", "ai.analyst", {
+        "event_id": event_id, "threat_id": event_id, "ip": ip,
+        "stage": "analysis",
+        "classification": str(analysis["threat_type"]).replace("_", " "),
+        "confidence": analysis["confidence"],
+        "risk": analysis["severity"],
+        "risk_score": analysis["risk_score"],
+        "recommendation": analysis["recommended_action"],
+        "target": ip,
+        "reasoning": analysis["reasoning"],
+        "source": src["source"],
+        "mode": src["mode"],
+    })
+
     decision = ai_analyst.decide(analysis, state["guardrail_mode"])
     await record("ai.decision.made", "ai.analyst", {
         "event_id": event_id, "ip": ip, "pattern": pattern,
@@ -306,6 +333,21 @@ async def _ai_pipeline_inner(etype: str, data: dict, ip: str):
         "recommended_action": decision["recommended_action"],
         "action": decision["action"],
         "policy_notes": decision["policy_notes"]})
+
+    # ── ai_reasoning (decision stage): the selected defensive action ────────
+    await record("ai.reasoning", "ai.analyst", {
+        "event_id": event_id, "threat_id": event_id, "ip": ip,
+        "stage": "decision",
+        "classification": str(analysis["threat_type"]).replace("_", " "),
+        "confidence": analysis["confidence"],
+        "risk": analysis["severity"],
+        "recommendation": decision["action"],
+        "target": ip,
+        "reasoning": (decision.get("policy_notes") or [analysis["reasoning"]])[0],
+        "action": decision["action"],
+        "source": src["source"],
+        "mode": src["mode"],
+    })
 
     state["ai_active"][ip] = {"event_id": event_id, "ip": ip,
                               "pattern": pattern,
@@ -322,7 +364,22 @@ async def _ai_pipeline_inner(etype: str, data: dict, ip: str):
                       "window_seconds": config.AI_VERIFICATION_WINDOW,
                       "threat_type": analysis["threat_type"]})
         await asyncio.sleep(config.AI_VERIFICATION_WINDOW)
-        await _verify_and_record(ip, event_id)
+        verdict = await _verify_and_record(ip, event_id)
+        if verdict and verdict.get("status") == "CONTAINED":
+            # ── ai_reasoning (verification stage): proof the cycle closed ────
+            await record("ai.reasoning", "ai.analyst", {
+                "event_id": event_id, "threat_id": event_id, "ip": ip,
+                "stage": "verification", "status": "CONTAINED",
+                "classification": str(analysis["threat_type"]).replace("_", " "),
+                "confidence": verdict.get("confidence", analysis["confidence"]),
+                "risk": analysis["severity"],
+                "recommendation": "Containment verified",
+                "target": ip,
+                "reasoning": verdict.get("reason", "Threat contained and verified."),
+                "action": decision["action"],
+                "source": src["source"],
+                "mode": src["mode"],
+            })
     else:
         state["ai_active"].pop(ip, None)
         await record("ai.verification.completed", "ai.analyst", {
@@ -437,8 +494,10 @@ async def _verify_and_record(ip: str, event_id: str):
                          {"event_id": event_id, "ip": ip,
                           "threat_type": (ctx or {}).get("threat_type"),
                           "verification": verdict})
+        return verdict
     except Exception as e:
         logger.warning(f"AI verification failed error={e}")
+        return None
 
 
 @app.post("/api/v1/ai/demo")

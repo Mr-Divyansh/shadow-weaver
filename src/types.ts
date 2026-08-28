@@ -95,7 +95,11 @@ export type EventType =
   | "ai_verification_completed"
   // Protected Target (Settings > Add IP & Port)
   | "target_connected"
-  | "target_disconnected";
+  | "target_disconnected"
+  // AI reasoning / firewall execution / verification lifecycle
+  | "ai_reasoning"
+  | "firewall_executed"
+  | "verification_completed";
 
 export interface ShadowEvent {
   id?: number;
@@ -109,6 +113,79 @@ export interface ShadowEvent {
   command?: string;
   attackType?: string;
 }
+
+// ── Live AI reasoning trail ───────────────────────────────────────────────────
+// Provenance is MANDATORY: source=gemini + mode=live means real Gemini output;
+// anything else (deterministic rule engine / demo fallback) is source=simulation
+// + mode=demo. The UI must never label the latter as LIVE AI.
+export type AiReasoningSource = "gemini" | "simulation";
+export type AiReasoningMode = "live" | "demo";
+
+export interface AiReasoningEvent {
+  type: "ai_reasoning";
+  timestamp: string;
+  threatId: string;
+  classification: string;
+  confidence: number;
+  risk: string;
+  riskScore?: number;
+  recommendation: string;
+  target: string;
+  reasoning: string;
+  source: AiReasoningSource;
+  mode: AiReasoningMode;
+  /** analysis | decision | verification — position in the decision lifecycle */
+  stage?: string;
+  /** resolved defensive action (e.g. HONEYPOT, BLOCK) once selected */
+  action?: string;
+}
+
+// ── Firewall execution ────────────────────────────────────────────────────────
+export type FirewallMode = "live" | "simulation";
+export type FirewallStatus = "idle" | "live" | "simulation" | "error";
+
+export interface FirewallExecutedEvent {
+  type: "firewall_executed";
+  timestamp: string;
+  mode: FirewallMode;
+  platform: string;
+  action: string;
+  target: string;
+  command: string;
+  success: boolean;
+  dryRun?: boolean;
+}
+
+/** One row in the recent firewall command log beside the topology. */
+export interface FirewallCommand {
+  id: number;
+  time: string;
+  action: string;
+  target: string;
+  command: string;
+  success: boolean;
+  mode: FirewallMode;
+}
+
+// ── Verification (final proof step) ──────────────────────────────────────────
+export interface VerificationCompletedEvent {
+  type: "verification_completed";
+  timestamp: string;
+  threatId: string;
+  status: string;
+  verified: boolean;
+}
+
+/**
+ * The complete typed security event space. Use this union wherever a frame
+ * from the orchestrator may arrive; unknown events are ignored by the store's
+ * normalizer (store.applyAIEvent).
+ */
+export type SecurityEvent =
+  | ShadowEvent
+  | AiReasoningEvent
+  | FirewallExecutedEvent
+  | VerificationCompletedEvent;
 
 // ── Traffic metrics ─────────────────────────────────────────────────────────
 

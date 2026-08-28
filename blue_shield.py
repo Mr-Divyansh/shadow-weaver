@@ -159,6 +159,22 @@ def blocked_resp(ip):
     return web.json_response({"error": "contained by Shadow-Weaver shield"}, status=403)
 
 
+def _firewall_event_notifier(entry):
+    """Executor hook: forward firewall command results to the orchestrator so
+    they reach the shared WebSocket feed as firewall.executed events.
+
+    The executor already labels live vs simulation from EXECUTOR_DRY_RUN at
+    the real execution point — this never re-labels or hides that fact.
+    """
+    if http_client is None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(post_telemetry("firewall.executed", entry))
+    except Exception:
+        pass
+
+
 @web.middleware
 async def security_headers(request, handler):
     resp = await handler(request)
@@ -585,6 +601,10 @@ async def main():
         circuit_recovery_timeout=config.CIRCUIT_RECOVERY_TIMEOUT,
     )
     await http_client.__aenter__()
+
+    # Forward firewall execution results (live or simulation) to the shared
+    # orchestrator feed. Registered once, after the HTTP client is ready.
+    executor.register_firewall_notifier(_firewall_event_notifier)
 
     shutdown_event = asyncio.Event()
 
