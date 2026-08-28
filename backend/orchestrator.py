@@ -20,6 +20,7 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 
 sys.path.insert(0, str(Path(__file__).parent))
 import ai_brain
+import ai_analyst
 import config
 import alerts
 
@@ -76,12 +77,35 @@ state = {
     "events": 0,
     "started": time.time(),
     "ai_narrated": {},
+    # AI Security Analyst pipeline bookkeeping (dedup / in-flight / active ops)
+    "ai_inflight": 0,
+    "ai_seen": {},
+    "ai_active": {},
 }
 clients: list[WebSocket] = []
 shutdown_event = asyncio.Event()
 
-# ── App Definition ──────────────────────────────────────────────────
-app = FastAPI(title="Shadow-Weaver Orchestrator")
+# ── Startup / Shutdown ──────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize DB pool and background tasks
+    await init_db_pool()
+    # Initialize alert queue
+    alerts.alert_queue = asyncio.Queue()
+    asyncio.create_task(alerts._alert_processor())
+    asyncio.create_task(prompt_janitor())
+    asyncio.create_task(event_pruner())
+    asyncio.create_task(metrics_updater())
+    logger.info(f"Orchestrator started port={config.ORCH_PORT}")
+    yield
+    # Shutdown
+    shutdown_event.set()
+    await asyncio.sleep(0.5)
+    await close_db_pool()
+    logger.info("Orchestrator shutdown complete")
+
+# ─── App Definition ────────────────────────────────────────
+app = FastAPI(title="Shadow-Weaver Orchestrator", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -183,13 +207,24 @@ def broadcast(payload: dict):
 COOLDOWN_TYPES = ("shield.detect", "shield.block", "containment.prompt",
                   "honeypot.intel", "containment.decision", "shield.containment")
 
+# Event types that feed the AI Security Analyst pipeline. These are meaningful
+# security events (new detections / honeypot capture / attacker adaptation),
+# NOT every UI update — this is the API-cost control.
+AI_PIPELINE_TYPES = ("shield.detect", "honeypot.intel", "attack.adapt")
+AI_BRIEF_MIN_SEVERITY = 8  # honeypot.intel severity gate for narration
+
 async def _maybe_narrate(etype: str, data: dict):
-    if etype not in COOLDOWN_TYPES:
+    if etype not in COOLDOWN_TYPES and etype not in AI_PIPELINE_TYPES:
         return
+    if etype in AI_PIPELINE_TYPES:
+        # Event-driven AI security analysis (deduped, bounded concurrency).
+        asyncio.create_task(_run_ai_pipeline(etype, data))
     key = data.get("ip") or data.get("peer") or ""
     now = time.time()
     last = state["ai_narrated"].get((etype, key), 0)
     if now - last < config.NARRATION_COOLDOWN:
+        return
+    if etype == "honeypot.intel" and int(data.get("severity", 0) or 0) < AI_BRIEF_MIN_SEVERITY:
         return
     state["ai_narrated"][(etype, key)] = now
     try:
@@ -205,6 +240,88 @@ async def _maybe_narrate(etype: str, data: dict):
         AI_BRIEFS.inc()
     except Exception as e:
         logger.warning(f"AI brief failed error={e}")
+
+# ── AI Security Analyst pipeline ────────────────────────────────────────────
+# ATTACK → TELEMETRY → AI ANALYSIS → DECISION → DEFENSE → VERIFICATION → AUDIT
+# Every step is recorded through record() so it lands in SQLite (audit log)
+# and on the existing WebSocket feed. The AI only RECOMMENDS actions from the
+# safe enum; execution always goes through existing defense handlers.
+
+async def _run_ai_pipeline(etype: str, data: dict):
+    try:
+        ip = str(data.get("ip") or data.get("peer") or "unknown")
+        pattern = str(data.get("detect") or etype.replace("shield.", ""))
+        now = time.time()
+
+        # Idempotency: skip duplicate AI calls for the same source+pattern.
+        dedup_key = (ip, pattern)
+        if now - state["ai_seen"].get(dedup_key, 0) < config.AI_DEDUP_WINDOW:
+            return
+        # Bounded concurrency: never queue unbounded AI work.
+        if state["ai_inflight"] >= config.AI_MAX_CONCURRENT:
+            return
+        state["ai_seen"][dedup_key] = now
+        state["ai_inflight"] += 1
+        try:
+            await _ai_pipeline_inner(etype, data, ip)
+        finally:
+            state["ai_inflight"] = max(0, state["ai_inflight"] - 1)
+    except Exception as e:
+        logger.warning(f"AI pipeline error type={etype} error={e}")
+        # Never let an AI failure break the event flow — the existing
+        # deterministic detection/response keeps running regardless.
+
+
+async def _ai_pipeline_inner(etype: str, data: dict, ip: str):
+    pattern = str(data.get("detect") or etype.replace("shield.", ""))
+    prior = sum(1 for (seen_ip, _), t in state["ai_seen"].items() if seen_ip == ip)
+    honeypot_seen = bool(state["attack"].get("active", False))
+
+    tel = ai_analyst.build_telemetry_view(etype, data, prior_events=prior,
+                                          honeypot_seen=honeypot_seen)
+    event_id = f"ai-{int(time.time() * 1000)}"
+    await record("ai.analysis.started", "ai.analyst",
+                 {"event_id": event_id, "trigger": etype, "ip": ip,
+                  "pattern": pattern})
+
+    analysis = await ai_analyst.analyze(tel)  # never raises; falls back itself
+    await record("ai.analysis.completed", "ai.analyst", {
+        "event_id": event_id, "ip": ip, "pattern": pattern,
+        "engine": analysis.get("engine", "unknown"),
+        "analysis": {k: analysis.get(k) for k in
+                     ("threat_type", "severity", "confidence", "risk_score",
+                      "indicators", "reasoning", "recommended_action",
+                      "verification_required")}})
+
+    decision = ai_analyst.decide(analysis, state["guardrail_mode"])
+    await record("ai.decision.made", "ai.analyst", {
+        "event_id": event_id, "ip": ip, "pattern": pattern,
+        "threat_type": analysis["threat_type"],
+        "severity": analysis["severity"],
+        "confidence": analysis["confidence"],
+        "risk_score": analysis["risk_score"],
+        "recommended_action": decision["recommended_action"],
+        "action": decision["action"],
+        "policy_notes": decision["policy_notes"]})
+
+    state["ai_active"][ip] = {"event_id": event_id, "ip": ip,
+                              "pattern": pattern,
+                              "threat_type": analysis["threat_type"]}
+
+    # ── Execute through the EXISTING defense handlers ──────────────────────
+    await _execute_defense(decision["action"], ip, analysis, event_id)
+
+    # ── Verification over the post-action telemetry window ─────────────────
+    if decision["action"] in ("HONEYPOT", "BLOCK", "ISOLATE"):
+        await asyncio.sleep(config.AI_VERIFICATION_WINDOW)
+        await _verify_and_record(ip, event_id)
+    else:
+        state["ai_active"].pop(ip, None)
+        await record("ai.verification.completed", "ai.analyst", {
+            "event_id": event_id, "ip": ip, "action": decision["action"],
+            "status": "MONITORING", "confidence": analysis["confidence"],
+            "reason": "Action is MONITOR — source kept under observation; "
+                      "no containment verification required."})
 
 # ── Pydantic Models ─────────────────────────────────────────────────
 class Telemetry(BaseModel):
@@ -229,6 +346,100 @@ class AttackCmd(BaseModel):
 
 class Unblock(BaseModel):
     ip: str
+
+
+async def _execute_defense(action: str, ip: str, analysis: dict, event_id: str):
+    """Run the validated AI action through existing backend capabilities.
+    The AI never produces commands — these are the only paths it can take."""
+    reason = f"AI:{analysis['threat_type']} risk={analysis['risk_score']}"
+    await record("defense.action.started", "ai.analyst",
+                 {"event_id": event_id, "ip": ip, "action": action,
+                  "threat_type": analysis["threat_type"], "reason": reason})
+    try:
+        if action in ("BLOCK", "ISOLATE"):
+            # Existing Blue Shield block path (firewall executor honors
+            # EXECUTOR_DRY_RUN). On any failure we still record the block
+            # orchestrator-side so Blue/Red state stays consistent.
+            executed = False
+            try:
+                import http_client
+                if not hasattr(_execute_defense, "_blue_http") or \
+                        _execute_defense._blue_http is None:
+                    _execute_defense._blue_http = http_client.HttpClient(
+                        f"http://127.0.0.1:{config.BLUE_PORT}",
+                        retry_attempts=1, circuit_failure_threshold=3)
+                await _execute_defense._blue_http.post(
+                    "/control/block", json_data={"ip": ip, "reason": reason,
+                                                 "decision": "ai-analyst"})
+                executed = True
+            except Exception as e:
+                logger.warning(f"Blue Shield block call failed ({e}) — "
+                               f"recording orchestrator-side block only")
+            await record("shield.block", "ai.analyst",
+                         {"ip": ip, "action": f"block {ip}",
+                          "reason": reason, "decision": "ai-analyst",
+                          "ttl": 300, "rules": [], "executed": executed})
+        elif action == "HONEYPOT":
+            # The existing Honeypot on :8022 stays untouched; the orchestrator
+            # records the deception handoff so real honeypot sessions from
+            # this peer join the same AI lifecycle.
+            await record("honeypot.session_opened", "ai.analyst",
+                         {"ip": ip, "event_id": event_id,
+                          "note": "AI handed source to deception environment",
+                          "threat_type": analysis["threat_type"]})
+        else:  # MONITOR
+            await record("ai.monitor", "ai.analyst",
+                         {"ip": ip, "event_id": event_id,
+                          "note": "AI recommends continued observation"})
+    except Exception as e:
+        logger.warning(f"Defense execution error action={action} error={e}")
+    finally:
+        await record("defense.action.completed", "ai.analyst",
+                     {"event_id": event_id, "ip": ip, "action": action,
+                      "threat_type": analysis["threat_type"]})
+
+
+async def _verify_and_record(ip: str, event_id: str):
+    ctx = state["ai_active"].pop(ip, None)
+    try:
+        started_at = datetime.fromtimestamp(
+            time.time() - config.AI_VERIFICATION_WINDOW - 1,
+            tz=timezone.utc).isoformat()
+        async with get_db() as con:
+            rows = await (await con.execute(
+                "SELECT ts,type,source,data FROM events WHERE ts >= ?",
+                (started_at,))).fetchall()
+        window_events = [{"ts": r[0], "type": r[1], "source": r[2],
+                          "data": json.loads(r[3])} for r in rows]
+        verdict = ai_analyst.verify(window_events, ip)
+        await record("ai.verification.completed", "ai.analyst", {
+            "event_id": event_id, "ip": ip,
+            "threat_type": (ctx or {}).get("threat_type"),
+            "status": verdict["status"], "confidence": verdict["confidence"],
+            "reason": verdict["reason"],
+            "new_malicious_events": verdict["new_malicious_events"]})
+        if verdict["status"] == "CONTAINED":
+            await record("threat.contained", "ai.analyst",
+                         {"event_id": event_id, "ip": ip,
+                          "threat_type": (ctx or {}).get("threat_type"),
+                          "verification": verdict})
+    except Exception as e:
+        logger.warning(f"AI verification failed error={e}")
+
+
+@app.post("/api/v1/ai/demo")
+async def ai_demo():
+    """Hackathon demo: drive the REAL AI pipeline with a controlled, clearly
+    labelled telemetry event. Same analysis/decision/verification code path
+    as live attacks — no mocked AI output."""
+    await record("system.attack", "orchestrator",
+                 {"action": "start", "vector": "ssh_brute"})
+    await record("shield.detect", "blue.shield(192.168.50.20)", {
+        "ip": "192.168.50.40", "detect": "ssh_brute",
+        "target": "192.168.50.20:22", "attempts": 6, "window": 10,
+        "note": "controlled demo event: simulated SSH brute-force burst"})
+    return {"ok": True, "detail": "AI pipeline engaged — watch the AI "
+                                  "Security Analyst panel"}
 
 # ── Target Configuration Models ──────────────────────────────────────────
 class TargetConnect(BaseModel):
@@ -555,27 +766,6 @@ async def metrics_updater():
         PENDING_PROMPT.set(1 if state["pending_prompt"] else 0)
         WS_CONNECTIONS.set(len(clients))
         await asyncio.sleep(10)
-
-# ── Startup / Shutdown ──────────────────────────────────────────────
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Initialize DB pool and background tasks
-    await init_db_pool()
-    # Initialize alert queue
-    alerts.alert_queue = asyncio.Queue()
-    asyncio.create_task(alerts._alert_processor())
-    asyncio.create_task(prompt_janitor())
-    asyncio.create_task(event_pruner())
-    asyncio.create_task(metrics_updater())
-    logger.info(f"Orchestrator started port={config.ORCH_PORT}")
-    yield
-    # Shutdown
-    shutdown_event.set()
-    await asyncio.sleep(0.5)
-    await close_db_pool()
-    logger.info("Orchestrator shutdown complete")
-
-app = FastAPI(title="Shadow-Weaver Orchestrator", lifespan=lifespan)
 
 if __name__ == "__main__":
     import uvicorn

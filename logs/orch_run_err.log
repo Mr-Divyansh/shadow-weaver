@@ -1,0 +1,11 @@
+{"ts": "2026-08-28T17:00:52.786964+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Started server process [18360]", "color_message": "Started server process [\u001b[36m%d\u001b[0m]"}
+{"ts": "2026-08-28T17:00:52.788793+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Waiting for application startup."}
+{"ts": "2026-08-28T17:00:52.853205+00:00", "level": "INFO", "logger": "shadow.orchestrator", "msg": "DB pool initialized pool_size=10"}
+{"ts": "2026-08-28T17:00:52.854218+00:00", "level": "INFO", "logger": "shadow.orchestrator", "msg": "Orchestrator started port=8000"}
+{"ts": "2026-08-28T17:00:52.855246+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Application startup complete."}
+{"ts": "2026-08-28T17:00:52.857203+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)", "color_message": "Uvicorn running on \u001b[1m%s://%s:%d\u001b[0m (Press CTRL+C to quit)"}
+{"ts": "2026-08-28T17:01:03.750493+00:00", "level": "INFO", "logger": "uvicorn.access", "msg": "127.0.0.1:63733 - \"GET /health HTTP/1.1\" 200"}
+{"ts": "2026-08-28T17:01:15.588751+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "127.0.0.1:63742 - \"WebSocket /ws/soc-feed\" [accepted]"}
+{"ts": "2026-08-28T17:01:15.591236+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "connection open"}
+{"ts": "2026-08-28T17:01:15.633947+00:00", "level": "INFO", "logger": "uvicorn.access", "msg": "127.0.0.1:63743 - \"POST /api/v1/ai/demo HTTP/1.1\" 200"}
+{"ts": "2026-08-28T17:01:21.809321+00:00", "level": "ERROR", "logger": "uvicorn.error", "msg": "Exception in ASGI application\n"}

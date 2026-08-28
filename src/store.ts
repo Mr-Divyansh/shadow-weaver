@@ -4,6 +4,8 @@ import type {
   AgentConnectionState,
   AgentConnectionStatus,
   AgentTeam,
+  AIAction,
+  AIAnalystState,
   ApprovalRequest,
   ConnectionState,
   EntityHealth,
@@ -11,6 +13,7 @@ import type {
   HoneypotStatus,
   OperatingMode,
   OverviewMetrics,
+  Severity,
   ShadowEvent,
   SimulationPhase,
   TargetEnvironment,
@@ -111,6 +114,22 @@ export interface AppState {
     config: TargetConfig;
     status: TargetStatus;
   };
+  // AI Security Analyst panel state — updated by the live orchestrator event
+  // feed (liveFeed.ts) and by Demo Mode's local fallback lifecycle.
+  ai: AIAnalystState;
+}
+
+// Standby state: subtle, no analysis, no glow. The panel only becomes
+// visually prominent once real AI pipeline events arrive.
+function createInitialAIState(): AIAnalystState {
+  return {
+    status: "idle",
+    phase: "idle",
+    analysis: null,
+    action: null,
+    verification: null,
+    updatedAt: 0,
+  };
 }
 
 const initialState: AppState = {
@@ -147,6 +166,7 @@ const initialState: AppState = {
   },
   settings: { open: false, tab: "protected_target" },
   target: buildInitialTargetState(),
+  ai: createInitialAIState(),
 };
 
 // A saved server (from a previous session) is restored as config only — the
@@ -202,6 +222,13 @@ class Store {
   // Optional hook wired by the bootstrap that lets demo start cancel an
   // in-flight Instant Attack without creating an import cycle.
   private abortProviderSimulation: (() => void) | null = null;
+  // Sticky flag: becomes true the moment any live ai.*/defense.* event is
+  // seen on the orchestrator feed. Demo Mode's local AI fallback only runs
+  // while this is false, so the two pipelines never double-draw the panel.
+  private aiEventsSeen = false;
+  // Bumped when Demo Mode is disabled so an in-flight backend demo pipeline
+  // request becomes a no-op when it finally resolves.
+  private demoAIRunId = 0;
 
   // Registers a callback that aborts a running provider simulation. Called
   // from main.tsx so the store never has to import the provider directly.
@@ -282,6 +309,172 @@ class Store {
 
   setOverview(patch: Partial<OverviewMetrics>) {
     this.setState({ overview: { ...this.state.overview, ...patch } });
+  }
+
+  // ── AI Security Analyst ────────────────────────────────────────────────────
+
+  // Generic AI state patch (used by the live feed and Demo Mode fallback).
+  updateAI(patch: Partial<AIAnalystState>) {
+    this.setState({ ai: { ...this.state.ai, ...patch, updatedAt: Date.now() } });
+  }
+
+  resetAI() {
+    this.demoAIRunId++;
+    this.setState({ ai: createInitialAIState() });
+  }
+
+  /**
+   * Applies one normalized orchestrator frame (from liveFeed.ts) to the AI
+   * panel state. Unknown or unrelated event types are ignored so this stays
+   * safe to call with the full raw feed.
+   */
+  applyAIEvent(frame: { type?: string; source?: string; ts?: string; data?: Record<string, unknown> }) {
+    const t = String(frame.type ?? "");
+    if (!t.startsWith("ai.") && !t.startsWith("defense.") && t !== "threat.contained") return;
+    this.aiEventsSeen = true;
+    const d = frame.data ?? {};
+    const stamp = (frame.ts ?? "").slice(11, 19) || new Date().toLocaleTimeString();
+
+    const toSeverity = (s: unknown): Severity => {
+      switch (String(s ?? "").toUpperCase()) {
+        case "CRITICAL": return "critical";
+        case "HIGH": return "high";
+        case "MEDIUM": return "warning";
+        default: return "info";
+      }
+    };
+
+    switch (t) {
+      case "ai.analysis.started": {
+        this.updateAI({ status: "online", phase: "analyzing", verification: null });
+        this.appendEvent({
+          type: "ai_analysis_started", severity: "info", source: String(d.source_ip ?? "soc"),
+          timestamp: stamp, message: "AI Security Analyst analyzing telemetry…",
+        });
+        break;
+      }
+      case "ai.analysis.completed": {
+        const a = (d.analysis ?? {}) as Record<string, unknown>;
+        if (!a.threat_type) return;
+        this.updateAI({
+          status: "online",
+          phase: "decided",
+          analysis: {
+            threatType: String(a.threat_type),
+            severity: toSeverity(a.severity),
+            confidence: Number(a.confidence ?? 0),
+            riskScore: Number(a.risk_score ?? 0),
+            indicators: Array.isArray(a.indicators) ? a.indicators.map(String).slice(0, 5) : [],
+            reasoning: String(a.reasoning ?? ""),
+            recommendedAction: String(a.recommended_action ?? "MONITOR") as AIAction,
+            engine: a.engine === "gemini" ? "gemini" : "deterministic",
+          },
+        });
+        this.appendEvent({
+          type: "ai_analysis_completed",
+          severity: toSeverity(a.severity),
+          source: String(d.source_ip ?? "soc"),
+          timestamp: stamp,
+          message: `AI classified ${String(a.threat_type)} — ${String(a.severity)} (confidence ${Math.round(Number(a.confidence ?? 0) * 100)}%)`,
+        });
+        break;
+      }
+      case "ai.decision.made": {
+        const action = String(d.action ?? "MONITOR") as AIAction;
+        const sev = toSeverity(this.state.ai.analysis?.severity);
+        this.updateAI({
+          status: "online",
+          action,
+          phase: action === "MONITOR" ? "decided" : "responding",
+          verification: action === "MONITOR" ? "MONITORING" : null,
+        });
+        this.appendEvent({
+          type: "ai_decision_made",
+          severity: action === "MONITOR" ? "info" : sev,
+          source: String(d.source_ip ?? "soc"),
+          timestamp: stamp,
+          message: `AI decision: ${action}${d.recommended_action && d.recommended_action !== d.action ? ` (policy-adjusted from ${String(d.recommended_action)})` : ""}`,
+        });
+        break;
+      }
+      case "defense.action.started": {
+        this.updateAI({ status: "online", phase: "responding" });
+        this.appendEvent({
+          type: "defense_action_started", severity: "warning",
+          source: String(d.source_ip ?? "soc"), timestamp: stamp,
+          message: `Executing ${String(d.action ?? "defense")} via ${String(d.executor ?? "blue_shield")}…`,
+        });
+        break;
+      }
+      case "defense.action.completed": {
+        const result = String(d.result ?? "");
+        const done = d.verification_required === false || result === "MONITOR_ONLY";
+        if (result === "BLOCKED" || result === "CAPTIVE") {
+          this.setOverview({ threatsContained: this.state.overview.threatsContained + 1 });
+        }
+        this.updateAI({
+          status: "online",
+          phase: done ? "contained" : "verifying",
+          verification: done ? "CONTAINED" : null,
+        });
+        this.appendEvent({
+          type: "defense_action_completed", severity: "success",
+          source: String(d.source_ip ?? "soc"), timestamp: stamp,
+          message: `${String(d.action ?? "Defense")} ${result.toLowerCase()} — ${String(d.detail ?? "action completed")}`,
+        });
+        break;
+      }
+      case "ai.verification.completed": {
+        const v = (d.verification ?? {}) as Record<string, unknown>;
+        const status = String(v.status ?? "UNCERTAIN") as AIAnalystState["verification"];
+        this.updateAI({
+          status: "online",
+          verification: status,
+          phase: status === "CONTAINED" ? "contained" : "decided",
+        });
+        this.appendEvent({
+          type: "ai_verification_completed",
+          severity: status === "CONTAINED" ? "success" : status === "STILL_ACTIVE" ? "high" : "warning",
+          source: String(d.source_ip ?? "soc"), timestamp: stamp,
+          message: `AI verification: ${status} — ${String(v.reason ?? "")}`,
+        });
+        break;
+      }
+      case "threat.contained": {
+        this.updateAI({ status: "online", phase: "contained", verification: "CONTAINED" });
+        this.appendEvent({
+          type: "threat_contained", severity: "success",
+          source: String(d.source_ip ?? "soc"), timestamp: stamp,
+          message: "Threat contained — AI verified the response was effective",
+        });
+        break;
+      }
+    }
+  }
+
+  // Demo Mode: fire the REAL backend AI pipeline (Gemini or deterministic
+  // engine server-side). Fire-and-forget with a timeout — if the backend is
+  // unreachable, Demo Mode continues with its local AI fallback lifecycle.
+  private async startDemoAIPipeline(runId: number) {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/ai/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      if (!data?.ok || runId !== this.demoAIRunId) return;
+      this.appendEvent({
+        type: "ai_analysis_started", severity: "info", source: "soc",
+        timestamp: new Date().toLocaleTimeString(),
+        message: "AI Security Analyst engaged — live backend pipeline driving this demo",
+      });
+    } catch {
+      // Backend unavailable: Demo Mode's local AI fallback (runDemoCycle)
+      // drives the AI panel instead. Never crash the demo over this.
+    }
   }
 
   // Empties the captured-session UI (terminal + fingerprint) and puts the
@@ -419,12 +612,18 @@ class Store {
     this.abortProviderSimulation?.();
     (["red", "blue"] as const).forEach((team) => this.setAgentStatus(team, "connected"));
     this.initializeDemoMode();
+    // Fire the REAL backend AI pipeline for this demo run (Gemini/deterministic
+    // server-side). Falls back silently to the local AI lifecycle below when
+    // the backend is unreachable.
+    const runId = this.demoAIRunId;
+    void this.startDemoAIPipeline(runId);
   }
 
   // Immediately cancels the demo and returns the dashboard to its calm,
   // neutral starting state — no glow, no attack colors, no animations.
   disableDemoMode() {
     this.cancelDemoLifecycle();
+    this.resetAI();
     if (this.state.target.status.status === "demo_connected") {
       this.setTargetStatus({ status: "disconnected", mode: "demo" });
     }
@@ -518,7 +717,50 @@ class Store {
       message: "Suspicious activity detected — Blue Team is responding",
     });
 
-    await wait(2200);
+    // AI Security Analyst — local fallback lifecycle (only when the live
+    // backend pipeline hasn't been seen on the feed; when it has, the real
+    // ai.* events drive the panel instead and this block is skipped).
+    if (!this.aiEventsSeen) {
+      this.updateAI({ phase: "analyzing", status: "offline" });
+      this.appendEvent({
+        type: "ai_analysis_started", severity: "info", source: "192.168.50.40",
+        timestamp: stamp(), message: "AI Security Analyst analyzing telemetry…",
+      });
+      await wait(1500);
+      if (cancelled()) return;
+      this.updateAI({
+        phase: "decided",
+        action: "HONEYPOT",
+        verification: null,
+        analysis: {
+          threatType: "SSH_BRUTE_FORCE",
+          severity: "critical",
+          confidence: 0.94,
+          riskScore: 94,
+          indicators: [
+            "Repeated authentication failures",
+            "High request frequency",
+          ],
+          reasoning:
+            "Repeated authentication failures from the same source within a short time window indicate a likely brute-force attack.",
+          recommendedAction: "HONEYPOT",
+          engine: "deterministic",
+        },
+      });
+      this.appendEvent({
+        type: "ai_analysis_completed", severity: "critical", source: "192.168.50.40",
+        timestamp: stamp(),
+        message: "AI classified SSH_BRUTE_FORCE — CRITICAL (confidence 94%)",
+      });
+      this.appendEvent({
+        type: "ai_decision_made", severity: "critical", source: "192.168.50.40",
+        timestamp: stamp(), message: "AI decision: HONEYPOT — divert attacker into deception environment",
+      });
+      await wait(500);
+      if (cancelled()) return;
+    }
+
+    await wait(700);
     if (cancelled()) return;
 
     // Phase 3 — Blue Team has completed its response; the attacker is diverted
@@ -533,6 +775,13 @@ class Store {
       timestamp: stamp(),
       message: "Honeypot deception environment engaging the attacker",
     });
+    if (!this.aiEventsSeen) {
+      this.updateAI({ phase: "responding" });
+      this.appendEvent({
+        type: "defense_action_started", severity: "warning", source: "192.168.50.40",
+        timestamp: stamp(), message: "Executing HONEYPOT via blue_shield deception layer…",
+      });
+    }
 
     await wait(2200);
     if (cancelled()) return;
@@ -600,8 +849,30 @@ class Store {
       timestamp: stamp(),
       message: "Isolating the attacker and rolling back the session",
     });
+    if (!this.aiEventsSeen) {
+      this.updateAI({ phase: "verifying" });
+      this.appendEvent({
+        type: "defense_action_completed", severity: "success", source: "192.168.50.40",
+        timestamp: stamp(), message: "honeypot captive — attacker isolated in deception environment",
+      });
+      await wait(1200);
+      if (cancelled()) return;
+      this.updateAI({
+        phase: "contained",
+        verification: "CONTAINED",
+      });
+      this.appendEvent({
+        type: "ai_verification_completed", severity: "success", source: "192.168.50.40",
+        timestamp: stamp(),
+        message: "AI verification: CONTAINED — no further malicious activity from 192.168.50.40 after isolation.",
+      });
+      this.appendEvent({
+        type: "threat_contained", severity: "success", source: "192.168.50.40",
+        timestamp: stamp(), message: "Threat contained — AI verified the response was effective",
+      });
+    }
 
-    await wait(2600);
+    await wait(1400);
     if (cancelled()) return;
 
     // Phase 6 — Complete / final secured state.
@@ -646,6 +917,7 @@ class Store {
       honeypot: { status: "waiting", commands: [], fingerprint: null },
       simulation: { phase: "ready", running: false, stopped: false },
       approval: { pending: null },
+      ai: createInitialAIState(),
       overview: {
         activeThreats: 0,
         threatsDetected: 0,

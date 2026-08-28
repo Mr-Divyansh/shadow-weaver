@@ -415,6 +415,31 @@ async def ssh_login(request):
     return web.json_response({"auth": "failed"}, status=401)
 
 
+def _valid_ip(ip: str) -> bool:
+    parts = str(ip).split(".")
+    return len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts)
+
+
+async def control_block(request):
+    """Controlled block endpoint used by the orchestrator's AI decision layer.
+    Accepts ONLY a validated IP plus fixed reason/decision fields — the AI can
+    never pass arbitrary commands through here. Execution goes through the
+    existing execute_block() path (state + firewall executor)."""
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    ip = str(data.get("ip", ""))
+    if not _valid_ip(ip):
+        return web.json_response({"error": "invalid ip"}, status=400)
+    reason = str(data.get("reason", "AI decision"))[:120]
+    execute_block(ip, reason, decision="ai-analyst")
+    await post_telemetry("shield.block", {"ip": ip, "action": "ufw deny from " + ip,
+                          "reason": reason, "decision": "ai-analyst",
+                          "ttl": BLOCK_TTL, "rules": list(blocked)})
+    return web.json_response({"ok": True, "ip": ip, "blocked": True})
+
+
 def execute_block(ip, reason, decision="autonomous"):
     blocked[ip] = {"reason": reason, "ts": time.time(), "decision": decision, "ttl": BLOCK_TTL}
     baseline[ip] = 0.0
@@ -483,6 +508,15 @@ async def shield_loop():
         st = await get_orch_status()
         orch_blocked = set((st.get("blocked") or {}).keys())
         now = time.time()
+
+        # AI decision adoption: orchestrator-issued AI blocks (decision=
+        # "ai-analyst") are enforced locally through the same execute_block
+        # path as native detections (state + real firewall executor).
+        for aip, ainfo in (st.get("blocked") or {}).items():
+            if isinstance(ainfo, dict) and ainfo.get("decision") == "ai-analyst" \
+                    and aip not in blocked:
+                execute_block(aip, ainfo.get("reason", "AI decision"),
+                              decision="ai-analyst")
 
         for ip in list(blocked):
             if ip not in orch_blocked:
@@ -571,6 +605,8 @@ async def main():
     app.router.add_get("/api/v1/shield", shield_status)
     app.router.add_post("/api/auth/login", auth_login)
     app.router.add_post("/api/ssh/login", ssh_login)
+    # Controlled AI decision execution (validated IP only, fixed fields)
+    app.router.add_post("/control/block", control_block)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", config.BLUE_PORT)

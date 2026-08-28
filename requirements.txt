@@ -1,6 +1,7 @@
 fastapi
-uvicorn
+uvicorn[standard]
 aiohttp
 paramiko
 aiosqlite
 prometheus-client
+websockets

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { provider } from "./simulation";
+import { startAIFeed } from "./liveFeed";
 import { store } from "./store";
 import type { DataProviderCallbacks } from "./types";
 import "./styles/global.css";
@@ -34,6 +35,11 @@ try {
   // eslint-disable-next-line no-console
   console.error("[Shadow-Weaver] provider.connect failed:", error);
 }
+
+// Live orchestrator feed (AI analyst pipeline events, etc.). Completely
+// optional: if the backend is down it retries quietly in the background and
+// the dashboard keeps working from its existing provider.
+startAIFeed();
 
 // Render the application directly. The top-level ErrorBoundary here is a
 // last-resort safety net only — Settings has its own scoped boundary so a

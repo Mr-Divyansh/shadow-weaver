@@ -85,6 +85,13 @@ export type EventType =
   | "honeypot_session_captured"
   | "honeypot_command"
   | "honeypot_offline"
+  // AI Security Analyst pipeline (orchestrator event feed)
+  | "ai_analysis_started"
+  | "ai_analysis_completed"
+  | "ai_decision_made"
+  | "defense_action_started"
+  | "defense_action_completed"
+  | "ai_verification_completed"
   // Protected Target (Settings > Add IP & Port)
   | "target_connected"
   | "target_disconnected";
@@ -155,6 +162,46 @@ export interface OverviewMetrics {
   honeypotCaptures: number;
   networkTraffic: number; // requests/sec
   systemHealth: string; // e.g. "Healthy"
+}
+
+// ── AI Security Analyst ─────────────────────────────────────────────────────
+
+// The ONLY actions the backend AI decision layer may ever produce.
+export type AIAction = "MONITOR" | "HONEYPOT" | "BLOCK" | "ISOLATE";
+
+// Which engine produced the analysis: the Gemini LLM or the deterministic
+// fallback rule engine (used when Gemini is unavailable/fails).
+export type AIEngine = "gemini" | "deterministic";
+
+// Lifecycle phase of the current AI decision cycle.
+export type AIPhase =
+  | "idle"
+  | "analyzing"
+  | "decided"
+  | "responding"
+  | "verifying"
+  | "contained";
+
+export interface AIAnalysis {
+  threatType: string; // e.g. "SSH_BRUTE_FORCE"
+  severity: Severity;
+  confidence: number; // 0..1
+  riskScore: number; // 0..100
+  indicators: string[];
+  reasoning: string;
+  recommendedAction: AIAction;
+  engine: AIEngine;
+}
+
+// Unified AI panel state — kept subtle/standby until real AI pipeline events
+// arrive over the existing orchestrator event feed.
+export interface AIAnalystState {
+  status: "idle" | "online" | "offline";
+  phase: AIPhase;
+  analysis: AIAnalysis | null;
+  action: AIAction | null;
+  verification: "CONTAINED" | "STILL_ACTIVE" | "UNCERTAIN" | "MONITORING" | null;
+  updatedAt: number;
 }
 
 // ── API contract for the data provider ──────────────────────────────────────

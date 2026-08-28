@@ -116,4 +116,20 @@ GENERIC_WEBHOOKS = os.environ.get("GENERIC_WEBHOOKS", "")
 DEMO_API_KEY = os.environ.get("DEMO_API_KEY", "sk-live-9f8e7d6c5b4a3")
 DEMO_DB_PASSWORD = os.environ.get("DEMO_DB_PASSWORD", "S3cret!")
 DEMO_ADMIN_TOKEN = os.environ.get("DEMO_ADMIN_TOKEN", "tok-2026-backup-root")
+# Demo credentials (loaded from .env, override with your own values if needed)
+DEMO_API_KEY = os.environ.get("DEMO_API_KEY", "sk-live-9f8e7d6c5b4a3")
+DEMO_DB_PASSWORD = os.environ.get("DEMO_DB_PASSWORD", "S3cret!")
+DEMO_ADMIN_TOKEN = os.environ.get("DEMO_ADMIN_TOKEN", "tok-2026-backup-root")
+ALERT_COOLDOWN = 60
+
+# ── AI Security Analyst (orchestrator-side decision engine) ────────────────
+# Uses the existing GEMINI_KEY / GEMINI_MODEL above when present; otherwise
+# falls back to the deterministic rule engine with the same output schema.
+AI_ANALYST_ENABLED = os.environ.get("AI_ANALYST_ENABLED", "true").lower() == "true"
+AI_TIMEOUT = float(os.environ.get("AI_TIMEOUT", "8.0"))          # Gemini call timeout (s)
+AI_DEDUP_WINDOW = float(os.environ.get("AI_DEDUP_WINDOW", "90")) # same source+threat cooldown (s)
+AI_VERIFICATION_WINDOW = float(os.environ.get("AI_VERIFICATION_WINDOW", "6.0"))  # post-action watch (s)
+AI_MAX_CONCURRENT = int(os.environ.get("AI_MAX_CONCURRENT", "1"))  # max in-flight AI calls
+AI_BLOCK_MIN_CONFIDENCE = float(os.environ.get("AI_BLOCK_MIN_CONFIDENCE", "0.7"))
+AI_BLOCK_MIN_RISK = int(os.environ.get("AI_BLOCK_MIN_RISK", "70"))
 ALERT_COOLDOWN = 60

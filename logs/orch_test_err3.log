@@ -1,0 +1,9 @@
+{"ts": "2026-08-28T16:38:40.050081+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Started server process [16416]", "color_message": "Started server process [\u001b[36m%d\u001b[0m]"}
+{"ts": "2026-08-28T16:38:40.051775+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Waiting for application startup."}
+{"ts": "2026-08-28T16:38:40.106456+00:00", "level": "INFO", "logger": "shadow.orchestrator", "msg": "DB pool initialized pool_size=10"}
+{"ts": "2026-08-28T16:38:40.107850+00:00", "level": "INFO", "logger": "shadow.orchestrator", "msg": "Orchestrator started port=8000"}
+{"ts": "2026-08-28T16:38:40.110245+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Application startup complete."}
+{"ts": "2026-08-28T16:38:40.111734+00:00", "level": "INFO", "logger": "uvicorn.error", "msg": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)", "color_message": "Uvicorn running on \u001b[1m%s://%s:%d\u001b[0m (Press CTRL+C to quit)"}
+{"ts": "2026-08-28T16:38:42.502932+00:00", "level": "INFO", "logger": "uvicorn.access", "msg": "127.0.0.1:53802 - \"GET /health HTTP/1.1\" 200"}
+{"ts": "2026-08-28T16:38:43.166026+00:00", "level": "INFO", "logger": "uvicorn.access", "msg": "127.0.0.1:53802 - \"POST /api/v1/ai/demo HTTP/1.1\" 200"}
+{"ts": "2026-08-28T16:38:45.714603+00:00", "level": "INFO", "logger": "uvicorn.access", "msg": "127.0.0.1:53802 - \"GET /api/v1/history?limit=25 HTTP/1.1\" 200"}

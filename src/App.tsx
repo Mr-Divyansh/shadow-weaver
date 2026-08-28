@@ -7,6 +7,7 @@ import { TrafficAnalytics } from "./components/TrafficAnalytics";
 import { ThreatFeed } from "./components/ThreatFeed";
 import { SystemHealth } from "./components/SystemHealth";
 import { HoneypotPanel } from "./components/HoneypotPanel";
+import { AIDecisionPanel } from "./components/AIDecisionPanel";
 import { SimulationControls } from "./components/SimulationControls";
 import { ApprovalDialog } from "./components/ApprovalDialog";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -97,6 +98,8 @@ function App() {
           </div>
           <HoneypotPanel />
         </section>
+
+        <AIDecisionPanel />
 
         <section className="panel">
           <div className="panel-header">
